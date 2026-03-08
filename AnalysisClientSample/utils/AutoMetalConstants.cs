@@ -114,22 +114,11 @@ namespace AutoMetal
 
 
         // 玻璃编号检测trt engine地址
-        public const string glassSegEnginePath = @"D:\Parameter\Meta\TensorRT\best_detect_1013.engine";
-
-        public const string glassDectEnginePath = @"D:\Parameter\Meta\TensorRT\best_seg_1013.enginee";
-    
-    
-        // SAM模型的ONNX路径
-        public const string samEncoderOnnxPath = @"C:\Users\SOW111\Desktop\MicroProj\Metalization\bin\x64\Release\weights\encoder.onnx";
-        public const string samDecoderOnnxPath = @"C:\Users\SOW111\Desktop\MicroProj\Metalization\bin\x64\Release\weights\decoder.onnx";
-
-        // SAM模型的TRT路径textul、visual 路径
-        public const string textPromptOnnxPath = @"C:\Users\SOW111\Desktop\MicroProj\Metalization\bin\x64\Release\weights\textual.onnx";
-        public const string visualPromptOnnxPath = @"C:\Users\SOW111\Desktop\MicroProj\Metalization\bin\x64\Release\weights\visual.onnx";
+        public const string glassDectEnginePath = @"D:\Parameter\Meta\TensorRT\number_reco.engine";
 
 
         // 配置deeplabv3+模型的trt路径
-        public const string deeplabv3PlusEnginePath = @"D:\Parameter\Meta\TensorRT\deeplabv3+.engine";
+        public const string deeplabv3PlusEnginePath = @"D:\Parameter\Meta\TensorRT\coverage_cal.engine";
 
 
     }
