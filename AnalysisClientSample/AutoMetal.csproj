@@ -175,15 +175,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="alogrithm\CoverageAnalyzer.cs" />
-    <Compile Include="alogrithm\samPreprocessor.cs" />
-    <Compile Include="alogrithm\sam\AutoSAM.cs" />
-    <Compile Include="alogrithm\sam\CLIP.cs" />
-    <Compile Include="alogrithm\sam\MaskData.cs" />
-    <Compile Include="alogrithm\sam\PromotionAnation.cs" />
-    <Compile Include="alogrithm\sam\Promotions.cs" />
-    <Compile Include="alogrithm\sam\SAM.cs" />
-    <Compile Include="alogrithm\sam\SimpleTokenizer.cs" />
-    <Compile Include="alogrithm\sam\Transformer.cs" />
     <Compile Include="alogrithm\SimilarityAnalyzer.cs" />
     <Compile Include="alogrithm\glassNumberAnalyzer.cs" />
     <Compile Include="alogrithm\Yolov8Det.cs" />

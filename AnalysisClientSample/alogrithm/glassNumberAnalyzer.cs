@@ -9,8 +9,6 @@ namespace ImageAnalysis
 {
     public class glassNumberAnalyzer
     {
-
-        public static string glassSegEnginePath = AutoMetalConstants.glassSegEnginePath;
         public static string glassDectEnginePath = AutoMetalConstants.glassDectEnginePath;
 
 
