@@ -1429,7 +1429,7 @@ namespace AutoMetal
             StringBuilder sb = new StringBuilder();
 
             // 表头
-            sb.AppendLine("ImageName\t均匀性\t覆盖率");
+            sb.AppendLine("ImageName\t检测编号\t均匀性\t覆盖率");
 
             foreach (var imagePath in imageFiles)
             {
@@ -1452,7 +1452,7 @@ namespace AutoMetal
                 double ratio = CoverageAnalyzer.detectImage(croppedImagePath);
 
                 // 写入一行
-                sb.AppendLine($"{imageName}\t{resValue:F6}\t{ratio:F6}");
+                sb.AppendLine($"{imageName}\t{glassNumber}\t{resValue:F6}\t{ratio:F6}");
             }
 
             // 一次性写入 txt
