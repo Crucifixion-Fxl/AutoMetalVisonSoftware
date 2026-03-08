@@ -114,11 +114,11 @@ namespace AutoMetal
 
 
         // 玻璃编号检测trt engine地址
-        public const string glassDectEnginePath = @"D:\Parameter\Meta\TensorRT\number_reco.engine";
+        public const string glassDectEnginePath = @"D:\Parameter\Meta\TensorRT\weights\number_reco.engine";
 
 
         // 配置deeplabv3+模型的trt路径
-        public const string deeplabv3PlusEnginePath = @"D:\Parameter\Meta\TensorRT\coverage_cal.engine";
+        public const string deeplabv3PlusEnginePath = @"D:\Parameter\Meta\TensorRT\weights\coverage_cal.engine";
 
 
     }
