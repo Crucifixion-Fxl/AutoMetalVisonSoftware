@@ -1412,7 +1412,7 @@ namespace AutoMetal
         private void btn_FuncTest_Click(object sender, EventArgs e)
         {
             // 图片文件夹路径
-            string imageDir = @"C:\Users\SOW111\Desktop\cropped";
+            string imageDir = @"C:\Users\SOW111\Desktop\origin";
 
             // 结果保存路径
             string saveTxtPath = Path.Combine(imageDir, "result.txt");
@@ -1435,12 +1435,21 @@ namespace AutoMetal
             {
                 string imageName = Path.GetFileName(imagePath);
 
-                // ===== 计算均匀性 =====
-                Tuple<double, string> res = ImageUniformityCalculator.CalculateUniformity(imagePath);
+                // 裁剪：与主流程一致，先 Process 再保存裁剪图
+                ImageProcessor.ProcessResult processedImage = ImageProcessor.ProcessImage(imagePath);
+                string croppedImagePath = Path.Combine(Path.GetDirectoryName(imagePath),
+                    Path.GetFileNameWithoutExtension(imagePath) + "_cropped.jpg");
+                Cv2.ImWrite(croppedImagePath, processedImage.CroppedImage);
+
+                // 计算 glassnumber（基于原图）
+                string glassNumber = glassNumberAnalyzer.GetGlassNumber(imagePath);
+
+                // ===== 计算均匀性（基于裁剪图） =====
+                Tuple<double, string> res = ImageUniformityCalculator.CalculateUniformity(croppedImagePath);
                 double resValue = res.Item1;
 
-                // ===== 计算覆盖率 =====
-                double ratio = CoverageAnalyzer.detectImage(imagePath);
+                // ===== 计算覆盖率（基于裁剪图） =====
+                double ratio = CoverageAnalyzer.detectImage(croppedImagePath);
 
                 // 写入一行
                 sb.AppendLine($"{imageName}\t{resValue:F6}\t{ratio:F6}");
