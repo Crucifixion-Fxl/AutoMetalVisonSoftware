@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
@@ -484,12 +484,7 @@ namespace AutoMetal
                 Ori_picture.Image = bitmap;
 
                 //// 识别出来的玻璃编号ID
-                //var sampleID_reco = glassNumberAnalyzer.GetGlassNumber(samplePath.Text);
-                var sampleID_reco = "202511130101";
-                Random random = new Random();
-
-                // 生成 0 到 99 之间的随机整数（包含 0，不包含 100）
-                int randomNumber = random.Next(0, 100);
+                var sampleID_reco = glassNumberAnalyzer.GetGlassNumber(samplePath.Text);
 
                 // 均匀性计算
                 Tuple<double, string> nUniformity = ImageUniformityCalculator.CalculateUniformity(croppedImagePath);
@@ -502,36 +497,24 @@ namespace AutoMetal
 
 
                 // 覆盖率计算
-                //double nConverageRate = CoverageAnalyzer.detectImage(croppedImagePath);
+                double nConverageRate = CoverageAnalyzer.detectImage(croppedImagePath);
 
                                              
-                //SafeUpdateTextBox(textBox5, nConverageRate.ToString());
+                SafeUpdateTextBox(textBox5, nConverageRate.ToString());
 
 
-                //Tuple<Dictionary<string, double>, string> abnormalities1 = AbnormalAnalyzer.abnormalAnalysis(croppedImagePath);
+                var sample = new SampleDBHelper.SampleData
+                {
+                   SampleId = sampleID_reco,
+                   Coverage = nConverageRate,
+                   OriginalImagePath = samplePath.Text,
+                   CroppedImagePath = croppedImagePath,
+                   Uniformity = nUniformityValue,
+                   UniformityAnalysisImagePath = nUniformity.Item2,
+                   CoverageAnalysisImagePath = null
+                };
 
-                //Dictionary<string, double> dict1 = new Dictionary<string, double>
-                //        {
-                //            { "bubble", 0.1 },
-                //            { "crack", 0.5 },
-                //        };
-
-                //var sample = new SampleDBHelper.SampleData
-                //{
-                //    SampleId = sampleID_reco,
-                //    BatchID = int.Parse(expID.Text),
-                //    InternalNum = int.Parse(sampleID.Text),
-                //    Coverage = nConverageRate,
-                //    OriginalImagePath = samplePath.Text,
-                //    ProcessedImagePath = croppedImagePath,
-                //    Uniformity = nUniformityValue,
-                //    Abnormalities = dict1,
-                //    AbnormalImagePath = abnormalities1.Item2,
-                //    UniformityAnalysisImagePath = nUniformity.Item2,
-                //    CoverageAnalysisImagePath = abnormalities1.Item2
-                //};
-
-                //SampleDBHelper.UpsertSample(sample);
+                SampleDBHelper.UpsertSample(sample);
 
                 int id_unuse;
                 m_analysis.setXY(out id_unuse, AutoMetalConstants.reset_x, AutoMetalConstants.reset_y);
@@ -730,7 +713,6 @@ namespace AutoMetal
         // 执行具体算法逻辑的函数
         private void button1_Click(object sender, EventArgs e)
         {
-            AbnormalAnalyzer.abnormalAnalysis(this.samplePath.Text);
         }
 
         private void SafeUpdateRichTextBox(System.Windows.Forms.RichTextBox textBox, string value)
@@ -992,26 +974,6 @@ namespace AutoMetal
 
         private void btn_getAllData_Click(object sender, EventArgs e)
         {
-
-            //string sampleID_reco = "123456";
-
-
-            //// 插入或更新数据
-            //var sample = new SampleDBHelper.SampleData
-            //{
-            //    SampleId = sampleID_reco,
-            //    Coverage = 0.5,
-            //    OriginalImagePath = "/root/sample.png",
-            //    ProcessedImagePath = "/root/sample.png",
-            //    Uniformity = 0.05,
-            //    Abnormalities = new Dictionary<string, double> { { "斑点", 0.1 }, { "裂纹", 0.2 } }, // 示例数据
-            //    AbnormalImagePath = "/root/sample.png",
-            //    UniformityAnalysisImagePath = "/images/analysis/uniformity/001.jpg",
-            //    CoverageAnalysisImagePath = "/images/analysis/coverage/001.jpg"
-            //};
-
-            //SampleDBHelper.UpsertSample(sample);
-
             // 获取数据
             var samples = SampleDBHelper.GetAllSamples();
             _bindingList = new BindingList<SampleDBHelper.SampleData>(samples);
@@ -1027,10 +989,8 @@ namespace AutoMetal
             AddColumn("SampleId", "样本ID");
             AddColumn("Coverage", "覆盖率");
             AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("ProcessedImagePath", "处理后的图像路径");
+            AddColumn("CroppedImagePath", "裁剪后的图像路径");
             AddColumn("Uniformity", "均匀度");
-            AddColumn("AbnormalitiesSummary", "异常情况"); // 绑定到 AbnormalitiesSummary
-            AddColumn("AbnormalImagePath", "异常图像路径");
             AddColumn("CreatedAt", "创建时间");
             AddColumn("UpdatedAt", "更新时间");
 
@@ -1053,10 +1013,8 @@ namespace AutoMetal
             AddColumn("SampleId", "样本ID");
             AddColumn("Coverage", "覆盖率");
             AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("ProcessedImagePath", "处理后的图像路径");
+            AddColumn("CroppedImagePath", "裁剪后的图像路径");
             AddColumn("Uniformity", "均匀度");
-            AddColumn("AbnormalitiesSummary", "异常情况"); // 绑定到 AbnormalitiesSummary
-            AddColumn("AbnormalImagePath", "异常图像路径");
             AddColumn("CreatedAt", "创建时间");
             AddColumn("UpdatedAt", "更新时间");
         }
@@ -1091,10 +1049,8 @@ namespace AutoMetal
             AddColumn("SampleId", "样本ID");
             AddColumn("Coverage", "覆盖率");
             AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("ProcessedImagePath", "处理后的图像路径");
+            AddColumn("CroppedImagePath", "裁剪后的图像路径");
             AddColumn("Uniformity", "均匀度");
-            AddColumn("AbnormalitiesSummary", "异常情况");
-            AddColumn("AbnormalImagePath", "异常图像路径");
             AddColumn("CreatedAt", "创建时间");
             AddColumn("UpdatedAt", "更新时间");
         }
@@ -1139,52 +1095,6 @@ namespace AutoMetal
                             MessageBox.Show("文件不存在:" + sampleData.OriginalImagePath);
                         }
 
-                    }
-
-                    // 异常图 + 异常类别展示
-                    if (sampleData.AbnormalImagePath != "")
-                    {
-
-                        if (File.Exists(sampleData.AbnormalImagePath))
-                        {
-                            var image_2 = Image.FromFile(sampleData.AbnormalImagePath);
-
-                            PictureBoxHelper.EnableImageInteraction(picBoxSampleAbnormal, image_2);
-
-                            //添加浮动按钮
-                            PictureBoxHelper.AddInternalControls(picBoxSampleAbnormal);
-
-                            // 修改异常数据展示
-                            int index = 1; // 用于动态匹配控件名称的序号
-
-                            foreach (var item in sampleData.Abnormalities)
-                            {
-                                string key = item.Key;      // 获取异常名称
-                                double value = item.Value;  // 获取异常数值
-
-                                // 动态查找 Label 和 TextBox 控件
-                                Label label = Controls.Find($"labelAbnormal_{index}", true).FirstOrDefault() as Label;
-                                TextBox textBox = Controls.Find($"textBoxAbnormal_{index}", true).FirstOrDefault() as TextBox;
-
-                                if (label != null && textBox != null)
-                                {
-                                    label.Text = key;          // 设置 Label 显示异常名称
-                                    textBox.Text = value.ToString(); // 设置 TextBox 显示异常数值
-                                }
-                                else
-                                {
-                                    // 如果控件不存在，可以记录日志或跳过
-                                    MessageBox.Show($"未找到 labelAbnormal_{index} 或 textBoxAbnormal_{index}");
-                                }
-
-                                index++; // 移动到下一组控件
-                            }
-
-                        }
-                        else
-                        {
-                            MessageBox.Show("文件不存在:" + sampleData.AbnormalImagePath);
-                        }
                     }
 
                     // 覆盖率
