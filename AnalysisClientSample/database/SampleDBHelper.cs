@@ -1,14 +1,11 @@
-﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SQLite;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Windows.Media.Animation;
 
 namespace AutoMetalDataBase
 {
@@ -46,14 +43,10 @@ namespace AutoMetalDataBase
                     string createTableSql = @"
                         CREATE TABLE IF NOT EXISTS Samples (
                             SampleId TEXT PRIMARY KEY,
-                            BatchID INTEGER,
-                            InternalNum INTEGER,
                             Coverage REAL DEFAULT 0.0,
                             OriginalImagePath TEXT,
-                            ProcessedImagePath TEXT,
+                            CroppedImagePath TEXT,
                             Uniformity REAL DEFAULT 0.0,
-                            AbnormalitiesJson TEXT,
-                            AbnormalImagePath TEXT,
                             UniformityAnalysisImagePath TEXT,
                             CoverageAnalysisImagePath TEXT,
                             CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -70,29 +63,23 @@ namespace AutoMetalDataBase
         {
             string sql = @"
         INSERT OR REPLACE INTO Samples (
-            SampleId,BatchID,InternalNum, Coverage, OriginalImagePath, ProcessedImagePath, 
-            Uniformity, AbnormalitiesJson, AbnormalImagePath, 
-            UniformityAnalysisImagePath, CoverageAnalysisImagePath
+            SampleId, Coverage, OriginalImagePath, CroppedImagePath, 
+            Uniformity, UniformityAnalysisImagePath, CoverageAnalysisImagePath
         ) VALUES (
-            @SampleId, @BatchID, @InternalNum, @Coverage, @OriginalImagePath, @ProcessedImagePath, 
-            @Uniformity, @AbnormalitiesJson, @AbnormalImagePath, 
-            @UniformityAnalysisImagePath, @CoverageAnalysisImagePath
+            @SampleId, @Coverage, @OriginalImagePath, @CroppedImagePath, 
+            @Uniformity, @UniformityAnalysisImagePath, @CoverageAnalysisImagePath
         )";
 
             var parameters = new[]
-{
-            new SQLiteParameter("@SampleId", sample.SampleId),
-            new SQLiteParameter("@BatchID", sample.BatchID),
-            new SQLiteParameter("@InternalNum", sample.InternalNum),
-            new SQLiteParameter("@Coverage", sample.Coverage),
-            new SQLiteParameter("@OriginalImagePath", sample.OriginalImagePath ?? (object)DBNull.Value),
-            new SQLiteParameter("@ProcessedImagePath", sample.ProcessedImagePath ?? (object)DBNull.Value),
-            new SQLiteParameter("@Uniformity", sample.Uniformity),
-            new SQLiteParameter("@AbnormalitiesJson", JsonConvert.SerializeObject(sample.Abnormalities)),
-            new SQLiteParameter("@AbnormalImagePath", sample.AbnormalImagePath ?? (object)DBNull.Value),
-            new SQLiteParameter("@UniformityAnalysisImagePath", sample.UniformityAnalysisImagePath ?? (object)DBNull.Value),
-            new SQLiteParameter("@CoverageAnalysisImagePath", sample.CoverageAnalysisImagePath ?? (object)DBNull.Value)
-        };
+            {
+                new SQLiteParameter("@SampleId", sample.SampleId),
+                new SQLiteParameter("@Coverage", sample.Coverage),
+                new SQLiteParameter("@OriginalImagePath", sample.OriginalImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@CroppedImagePath", sample.CroppedImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@Uniformity", sample.Uniformity),
+                new SQLiteParameter("@UniformityAnalysisImagePath", sample.UniformityAnalysisImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@CoverageAnalysisImagePath", sample.CoverageAnalysisImagePath ?? (object)DBNull.Value)
+            };
 
             ExecuteNonQuery(sql, parameters);
         }
@@ -249,20 +236,13 @@ namespace AutoMetalDataBase
 
         private static SampleData MapDataRowToSampleData(DataRow row)
         {
-            var abnormalitiesJson = row["AbnormalitiesJson"] as string;
-            var abnormalities = !string.IsNullOrEmpty(abnormalitiesJson)
-                ? JsonConvert.DeserializeObject<Dictionary<string, double>>(abnormalitiesJson)
-                : new Dictionary<string, double>();
-
             return new SampleData
             {
                 SampleId = row["SampleId"].ToString(),
                 Coverage = Convert.ToDouble(row["Coverage"]),
                 OriginalImagePath = row["OriginalImagePath"] as string,
-                ProcessedImagePath = row["ProcessedImagePath"] as string,
+                CroppedImagePath = row["CroppedImagePath"] as string,
                 Uniformity = Convert.ToDouble(row["Uniformity"]),
-                Abnormalities = abnormalities,
-                AbnormalImagePath = row["AbnormalImagePath"] as string,
                 UniformityAnalysisImagePath = row["UniformityAnalysisImagePath"] as string,
                 CoverageAnalysisImagePath = row["CoverageAnalysisImagePath"] as string,
                 CreatedAt = Convert.ToDateTime(row["CreatedAt"]),
@@ -274,20 +254,17 @@ namespace AutoMetalDataBase
         {
             var samples = new List<SampleData>();
 
-            // SQLite 使用 strftime 提取日期部分，并添加批次号条件
+            // SQLite 使用 strftime 提取日期部分（与 AutoMetal 创建字段一致，表无 BatchID 时仅按日期查询）
             string sql = @"
         SELECT * FROM Samples 
         WHERE strftime('%Y', CreatedAt) = @Year 
           AND strftime('%m', CreatedAt) = @Month 
-          AND strftime('%d', CreatedAt) = @Day
-          AND BatchID = @BatchID";
+          AND strftime('%d', CreatedAt) = @Day";
 
-            // 使用参数化查询防止SQL注入
             using (var dt = ExecuteQuery(sql,
                 new SQLiteParameter("@Year", targetDate.Year.ToString("0000")),
                 new SQLiteParameter("@Month", targetDate.Month.ToString("00")),
-                new SQLiteParameter("@Day", targetDate.Day.ToString("00")),
-                new SQLiteParameter("@BatchID", batchId)))
+                new SQLiteParameter("@Day", targetDate.Day.ToString("00"))))
             {
                 foreach (DataRow row in dt.Rows)
                 {
@@ -302,29 +279,14 @@ namespace AutoMetalDataBase
         public class SampleData
         {
             public string SampleId { get; set; }
-            public int BatchID { get; set; }
-            public int InternalNum { get; set; }
             public double Coverage { get; set; } = 0.0;
             public string OriginalImagePath { get; set; }
-            public string ProcessedImagePath { get; set; }
+            public string CroppedImagePath { get; set; }
             public double Uniformity { get; set; } = 0.0;
-            public Dictionary<string, double> Abnormalities { get; set; } = new Dictionary<string, double>();
-            public string AbnormalImagePath { get; set; }
             public string UniformityAnalysisImagePath { get; set; }
             public string CoverageAnalysisImagePath { get; set; }
             public DateTime CreatedAt { get; set; }
             public DateTime UpdatedAt { get; set; }
-
-            public string AbnormalitiesSummary
-            {
-                get
-                {
-                    if (Abnormalities == null || Abnormalities.Count == 0)
-                        return "无异常";
-
-                    return string.Join(", ", Abnormalities.Select(kv => $"{kv.Key}:{kv.Value}"));
-                }
-            }
         }
 
     }
