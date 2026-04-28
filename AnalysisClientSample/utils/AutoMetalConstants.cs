@@ -35,10 +35,10 @@ namespace AutoMetal
         public const string microPort = "8087";
 
         // UDP：与机械臂通信的IP地址及端口：从显微镜到机械臂（发送显微镜状态信号给机械臂）
-        public const int clientPort = 8888;
+        public const int clientPort = 6699;
 
         // UDP： 与机械臂通信的IP地址及端口：从机械臂到显微镜 （接收机械臂的传递的消息）
-        public const int serverPort = 6000;
+        public const int serverPort = 6656;
 
 
         // 横向与纵向二选一
@@ -69,6 +69,12 @@ namespace AutoMetal
         public const string leftTop_y = "-22140.38";
         public const string rightBottom_x = "12480.19";
         public const string rightBottom_y = "21699.38";
+
+        // 竖向: 用于快速测试 对接流程
+        //public const string leftTop_x = "-11200.69";
+        //public const string leftTop_y = "-11400.38";
+        //public const string rightBottom_x = "-12000.69";
+        //public const string rightBottom_y = "-12000.38";
 
         // 竖向:设定图像处理后的宽度
         public const int scale_width = 4608;
@@ -104,7 +110,7 @@ namespace AutoMetal
         public const int initBrightness = 16;
 
         // 数据库地址
-        public const string dbPath = "data\\sampleData.db";
+        public const string dbPath = "D:\\Parameter\\Meta\\DB\\cv.db";
 
 
         // 视频流配置参数

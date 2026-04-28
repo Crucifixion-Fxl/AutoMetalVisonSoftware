@@ -62,7 +62,6 @@ namespace ImageAnalysis
                 Cv2.Rotate(image_1, rotated, RotateFlags.Rotate90Counterclockwise);
 
 
-
                 Cv2.Resize(rotated, image, new Size(AutoMetalConstants.scale_width, AutoMetalConstants.scale_height));
 
 
@@ -85,8 +84,6 @@ namespace ImageAnalysis
 
                 // 三角阈值法: 效果更好
                 Cv2.Threshold(gray, binary, 0, 255, ThresholdTypes.Binary | ThresholdTypes.Triangle);
-
-                Cv2.ImWrite(@"C:\Users\SOW111\Desktop\FuncTest_thri_binary.jpg", binary);
 
                 // 第2步：查找轮廓并过滤小面积
                 Point[][] contours;

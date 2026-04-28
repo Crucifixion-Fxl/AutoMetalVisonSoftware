@@ -35,7 +35,7 @@ namespace AutoMetal
         private IPEndPoint _targetEndPoint;
 
         // 设置状态：判断显微镜当前是否处于空闲状态:1-空闲 0-忙碌
-        private IdleStatus is_free = IdleStatus.Idle;
+        private int is_free =1;
 
         // Moetic 通信客户端
         private static AnalysisClient m_analysis;
@@ -420,7 +420,7 @@ namespace AutoMetal
             m_analysis.setXY(out id, AutoMetalConstants.reset_x, AutoMetalConstants.reset_y);
 
             // 初始状态设置为空闲
-            is_free = IdleStatus.Idle;
+            is_free = 1;
 
             return true;
         }
@@ -483,47 +483,55 @@ namespace AutoMetal
 
                 Ori_picture.Image = bitmap;
 
-                //// 识别出来的玻璃编号ID
-                var sampleID_reco = glassNumberAnalyzer.GetGlassNumber(samplePath.Text);
+                ////// 识别出来的玻璃编号ID
+                //var sampleID_reco = glassNumberAnalyzer.GetGlassNumber(samplePath.Text);
 
-                // 均匀性计算
-                Tuple<double, string> nUniformity = ImageUniformityCalculator.CalculateUniformity(croppedImagePath);
-
-
-                double nUniformityValue = nUniformity.Item1;
+                //// 均匀性计算
+                //Tuple<double, string> nUniformity = ImageUniformityCalculator.CalculateUniformity(croppedImagePath);
 
 
-                SafeUpdateTextBox(textBox6, nUniformity.Item2);
+                //double nUniformityValue = nUniformity.Item1;
 
 
-                // 覆盖率计算
-                double nConverageRate = CoverageAnalyzer.detectImage(croppedImagePath);
-
-                                             
-                SafeUpdateTextBox(textBox5, nConverageRate.ToString());
+                //SafeUpdateTextBox(textBox6, nUniformity.Item2);
 
 
-                var sample = new SampleDBHelper.SampleData
-                {
-                   SampleId = sampleID_reco,
-                   Coverage = nConverageRate,
-                   OriginalImagePath = samplePath.Text,
-                   CroppedImagePath = croppedImagePath,
-                   Uniformity = nUniformityValue,
-                   UniformityAnalysisImagePath = nUniformity.Item2,
-                   CoverageAnalysisImagePath = null
-                };
+                //// 覆盖率计算
+                //double nConverageRate = CoverageAnalyzer.detectImage(croppedImagePath);
 
-                SampleDBHelper.UpsertSample(sample);
+
+                //SafeUpdateTextBox(textBox5, nConverageRate.ToString());
+
+
+                //var sample = new SampleDBHelper.SampleData
+                //{
+                //    SampleId = sampleID_reco,
+                //    Coverage = nConverageRate,
+                //    OriginalImagePath = samplePath.Text,
+                //    CroppedImagePath = croppedImagePath,
+                //    Uniformity = nUniformityValue,
+                //    UniformityAnalysisImagePath = nUniformity.Item2,
+                //    CoverageAnalysisImagePath = null
+                //};
+
+                //SampleDBHelper.UpsertSample(sample);
 
                 int id_unuse;
                 m_analysis.setXY(out id_unuse, AutoMetalConstants.reset_x, AutoMetalConstants.reset_y);
 
-                Thread.Sleep(5000);
+                Thread.Sleep(15000);
 
-                is_free = IdleStatus.Idle;
+                is_free = 1;
 
-                SendMessageAysnc("complete");
+                // 仅当 UDP 已启动且目标端点有效时才发送 complete，否则会空引用且机械臂收不到
+                if (udpClient != null && isRunning && _targetEndPoint != null)
+                {
+                    SendMessageAysnc("complete");
+                }
+                else
+                {
+                    LogText("UDP 未启动，未向机械臂发送 complete");
+                }
 
             }
         }
@@ -634,6 +642,28 @@ namespace AutoMetal
                 MessageBox.Show("无效的坐标值！");
             }
 
+        }
+
+        private static string GetNextNumericJpgSampleId(string folderPath)
+        {
+            // 只识别形如 "1.jpg" / "2.jpg" 的文件名（纯数字 + .jpg），忽略其它命名格式
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+                return "1";
+            }
+
+            int maxId = 0;
+            foreach (var file in Directory.EnumerateFiles(folderPath, "*.jpg", SearchOption.TopDirectoryOnly))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (int.TryParse(name, out int id) && id > maxId)
+                {
+                    maxId = id;
+                }
+            }
+
+            return (maxId + 1).ToString();
         }
 
         private void Hand_PerformAutoScan(string expID, string sampleID)
@@ -767,18 +797,24 @@ namespace AutoMetal
                         // 使用发送方的端点回复
                         SendMessageToEndpoint(is_free.ToString(), remoteEP);
                     }
-                    else if (message.StartsWith("place:", StringComparison.OrdinalIgnoreCase))
+                    //else if (message.StartsWith("place:", StringComparison.OrdinalIgnoreCase))
+                    else if (message.StartsWith("place", StringComparison.OrdinalIgnoreCase))
                     {
                         // 放置状态完成后 显微镜处于忙碌状态
                         is_free = 0;
 
-                        message = message.Substring(6);
+                        //message = message.Substring(6);
 
                         // 安全更新UI（跨线程调用）
                         SafeAppendLog($"来自 {remoteEP}: {message}");
 
                         // 实验ID 样品序号
-                        var (expId, sampleId) = AnalysisUtils.ParseExperimentSampleId(message);
+                        //var (expId, sampleId) = AnalysisUtils.ParseExperimentSampleId(message);
+                        var expId = "2";
+                        // 根据目标文件夹中现有的 1.jpg/2.jpg/... 自动顺序递增，忽略不符合格式的文件
+                        string dateString = DateTime.Now.ToString("yyyyMMdd");
+                        string folderPath = Path.Combine(AutoMetalConstants.autoFolderPath + "\\" + $"{dateString}", $"{expId}");
+                        var sampleId = GetNextNumericJpgSampleId(folderPath);
                         SafeAppendLog($"开始进行检测: 实验ID: {expId}, 样品ID: {sampleId}");
 
                         // 更新表面组件
@@ -1412,7 +1448,7 @@ namespace AutoMetal
         private void btn_FuncTest_Click(object sender, EventArgs e)
         {
             // 图片文件夹路径
-            string imageDir = @"C:\Users\SOW111\Desktop\origin";
+            string imageDir = @"C:\Users\SOW111\Desktop\paper";
 
             // 结果保存路径
             string saveTxtPath = Path.Combine(imageDir, "result.txt");
