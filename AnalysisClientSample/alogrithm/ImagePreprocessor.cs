@@ -15,6 +15,7 @@ namespace ImageAnalysis
         /// </summary>
         public class ProcessResult
         {
+            public Mat BinaryImage { get; set; }
             public Mat CorrectedImage { get; set; }
             public Mat CroppedImage { get; set; }
             public bool Success { get; set; }
@@ -28,6 +29,7 @@ namespace ImageAnalysis
 
             public void Dispose()
             {
+                BinaryImage?.Dispose();
                 CorrectedImage?.Dispose();
                 CroppedImage?.Dispose();
             }
@@ -40,7 +42,12 @@ namespace ImageAnalysis
         /// <param name="areaThreshold">面积阈值（默认100000）</param>
         /// <param name="binaryThreshold">二值化阈值（默认50）</param>
         /// <returns>包含矫正图像和裁剪图像的结果</returns>
-        public static ProcessResult ProcessImage(string imagePath, double areaThreshold = 1000000, double binaryThreshold = 50)
+        public static ProcessResult ProcessImage(
+            string imagePath,
+            double areaThreshold = 1000000,
+            double binaryThreshold = 50,
+            bool rotate90Counterclockwise = true,
+            bool overwriteInputWithResized = true)
         {
             var result = new ProcessResult();
             
@@ -55,18 +62,23 @@ namespace ImageAnalysis
                 Mat image = new Mat();
 
 
-                // 方法2：直接使用Rotate函数（需要OpenCvSharp 4.x以上版本）
                 Mat rotated = new Mat();
-
-                // RotateFlags.Rotate90Counterclockwise = 逆时针旋转90度
-                Cv2.Rotate(image_1, rotated, RotateFlags.Rotate90Counterclockwise);
-
+                if (rotate90Counterclockwise)
+                {
+                    // RotateFlags.Rotate90Counterclockwise = 逆时针旋转90度
+                    Cv2.Rotate(image_1, rotated, RotateFlags.Rotate90Counterclockwise);
+                }
+                else
+                {
+                    rotated = image_1.Clone();
+                }
 
                 Cv2.Resize(rotated, image, new Size(AutoMetalConstants.scale_width, AutoMetalConstants.scale_height));
 
-
-
-                Cv2.ImWrite(imagePath, image);
+                if (overwriteInputWithResized)
+                {
+                    Cv2.ImWrite(imagePath, image);
+                }
 
 
                 if (image.Empty())
@@ -174,12 +186,15 @@ namespace ImageAnalysis
 
 
                 // 设置结果
+                result.BinaryImage = binary.Clone();
                 result.CorrectedImage = warped.Clone();
                 result.CroppedImage = cropped.Clone();
                 result.Success = true;
                 result.Message = "图像处理成功。";
 
                 // 清理资源
+                image_1.Dispose();
+                rotated.Dispose();
                 image.Dispose();
                 gray.Dispose();
                 binary.Dispose();

@@ -17,6 +17,7 @@ using AutoMetalDataBase;
 using System.ComponentModel;
 using System.Windows.Media.Animation;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace AutoMetal
 {
@@ -71,10 +72,46 @@ namespace AutoMetal
         private DateTime startTime;
         private System.Windows.Forms.Timer runtimeTimer;
 
+        // 算法处理页签相关
+        private static readonly string[] AlgImageExtensions = { ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff" };
+        private readonly Regex _algSampleNameRegex = new Regex(@"^\d{12}$");
+        private string _algSelectedImagePath = string.Empty;
+        private string _algPreprocessedImagePath = string.Empty;
+        private string _algBinaryImagePath = string.Empty;
+        private string _algStandardImagePath = string.Empty;
+        private string _algCroppedImagePath = string.Empty;
+        private string _algOutputImagePath = string.Empty;
+        private string _algHeatmapImagePath = string.Empty;
+        private List<AlgDirectoryAverage> _algDirectoryAverages = new List<AlgDirectoryAverage>();
+        private bool _isTrainingRunning = false;
+        private CancellationTokenSource _trainingCancellationTokenSource;
+        private Process _trainingProcess;
+        private int _trainingTotalEpoch = 0;
+        private readonly Regex _trainingEpochRegex = new Regex(@"Epoch\s+(\d+)\s*/\s*(\d+)", RegexOptions.IgnoreCase);
+        private class AlgBatchResult
+        {
+            public string BatchName { get; set; }
+            public string SampleName { get; set; }
+            public double? Coverage { get; set; }
+            public double? Uniformity { get; set; }
+            public string Status { get; set; }
+            public string AlgorithmImagePath { get; set; }
+        }
+        private class AlgDirectoryAverage
+        {
+            public string BatchName { get; set; }
+            public double CoverageAvg { get; set; }
+            public double UniformityAvg { get; set; }
+            public int SampleCount { get; set; }
+        }
+
         public AutoMetal()
         {
             // 初始化组件及窗口固定
             InitializeComponent();
+
+            // 加载用户自定义参数（无配置时保持默认值）
+            AutoMetalConstants.LoadUserSettings();
 
             // 初始化默认状态
             initDefaultConfig();
@@ -119,6 +156,13 @@ namespace AutoMetal
             // 设置显微镜的通信端口: 固定
             textBoxPort.Text = AutoMetalConstants.microPort;
 
+            // 默认显示值：避免 Brightness/Contrast/XY/Z 输入框为空
+            textBrightness.Text = AutoMetalConstants.initBrightness.ToString();
+            textContrast.Text = AutoMetalConstants.initContrast.ToString();
+            textXY1.Text = AutoMetalConstants.initX.ToString();
+            textXY2.Text = AutoMetalConstants.initY.ToString();
+            textZ.Text = AutoMetalConstants.initZ.ToString();
+
             // 订阅窗口结束事件
             this.FormClosed += OnFormClosed;
 
@@ -128,6 +172,685 @@ namespace AutoMetal
             // 初始化键盘控制CheckBox监听
             InitializeKeyboardControlCheckBox();
 
+            // 默认选择正常模式
+            radioButton1.Checked = true;
+
+            // 打开参数设置界面
+            setingsToolStripMenuItem.Click += setingsToolStripMenuItem_Click;
+
+            // 初始化算法处理页签交互
+            InitializeAlgorithmTabHandlers();
+            InitializeTrainingTabHandlers();
+
+        }
+
+        private void InitializeAlgorithmTabHandlers()
+        {
+            radioAlgManualMode.Checked = true;
+            ToggleAlgManualMaskControls(true);
+
+            btnAlgBrowseInput.Click += btnAlgBrowseInput_Click;
+            btnAlgPreprocess.Click += btnAlgPreprocess_Click;
+            treeAlgSamples.AfterSelect += treeAlgSamples_AfterSelect;
+            radioAlgManualMode.CheckedChanged += radioAlgMode_CheckedChanged;
+            radioAlgAutoMode.CheckedChanged += radioAlgMode_CheckedChanged;
+            btnAlgBrowseMaskDir.Click += btnAlgBrowseMaskDir_Click;
+            btnAlgLoadMaskList.Click += btnAlgLoadMaskList_Click;
+            btnAlgRun.Click += btnAlgRun_Click;
+            btnAlgShowDirAverages.Click += btnAlgShowDirAverages_Click;
+            btnAlgPreviewBinary.Click += btnAlgPreviewBinary_Click;
+            btnAlgPreviewStandard.Click += btnAlgPreviewStandard_Click;
+            btnAlgPreviewCropped.Click += btnAlgPreviewCropped_Click;
+            btnAlgPreviewOutput.Click += btnAlgPreviewOutput_Click;
+            btnAlgPreviewHeatmap.Click += btnAlgPreviewHeatmap_Click;
+            btnAlgPreviewOriginal.Click += btnAlgPreviewOriginal_Click;
+            UpdateAlgPreviewButtonState(btnAlgPreviewOriginal);
+        }
+
+        private void InitializeTrainingTabHandlers()
+        {
+            btnBrowseTestSet.Click += btnBrowseTestSet_Click;
+            // 兼容：优先使用新加的 btnBrowserEngine；若不存在则回退到旧按钮 btnBrowsePt
+            var browserEngineBtn = this.Controls.Find("btnBrowserEngine", true).FirstOrDefault() as Button;
+            if (browserEngineBtn != null)
+            {
+                browserEngineBtn.Click += btnBrowseEnginePath_Click;
+            }
+            else
+            {
+                btnBrowsePt.Click += btnBrowseEnginePath_Click;
+            }
+            // 兼容：优先绑定新增 btnStartInfer，否则绑定旧按钮 btnStartTrain
+            var startInferBtn = this.Controls.Find("btnStartInfer", true).FirstOrDefault() as Button;
+            if (startInferBtn != null)
+            {
+                startInferBtn.Click += btnStartInfer_Click;
+            }
+            else
+            {
+                var legacyStartBtn = this.Controls.Find("btnStartTrain", true).FirstOrDefault() as Button;
+                if (legacyStartBtn != null)
+                {
+                    legacyStartBtn.Click += btnStartInfer_Click;
+                }
+            }
+            btnStopTrain.Click += btnStopTrain_Click;
+            btnExportTensorEngine.Click += btnExportPtToEngine_Click;
+            btnExportOnnx.Click += btnBrowseBestPt_Click;
+        }
+
+        private void btnBrowseBestPt_Click(object sender, EventArgs e)
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = "PyTorch权重 (*.pt;*.pth)|*.pt;*.pth|All files (*.*)|*.*";
+                dialog.CheckFileExists = true;
+                dialog.Multiselect = false;
+
+                if (!string.IsNullOrWhiteSpace(txtBestPtPath.Text))
+                {
+                    try
+                    {
+                        var baseDir = Path.GetDirectoryName(txtBestPtPath.Text);
+                        if (!string.IsNullOrWhiteSpace(baseDir) && Directory.Exists(baseDir))
+                        {
+                            dialog.InitialDirectory = baseDir;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    txtBestPtPath.Text = dialog.FileName;
+                }
+            }
+        }
+
+        private async void btnExportPtToEngine_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string ptPath = txtBestPtPath.Text?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(ptPath) || !File.Exists(ptPath))
+                {
+                    SafeShowWarning("请先选择有效的最优权重(.pt/.pth)路径");
+                    return;
+                }
+
+                string onnxPath = Path.Combine(
+                    Path.GetDirectoryName(ptPath),
+                    Path.GetFileNameWithoutExtension(ptPath) + ".onnx");
+
+                Directory.CreateDirectory(Path.GetDirectoryName(onnxPath));
+                string projectPath = AutoMetalConstants.deepLabProjectPath;
+                if (!Directory.Exists(projectPath))
+                {
+                    SafeShowWarning($"DeepLab工程目录不存在：{projectPath}");
+                    return;
+                }
+
+                string helperScriptPath = EnsureOnnxExportHelperScript(projectPath);
+                string args = $"\"{helperScriptPath}\" --pt \"{ptPath}\" --onnx \"{onnxPath}\" --num-classes 2 --backbone mobilenet --downsample 16";
+
+                SafeAppendLog($"开始导出ONNX：{ptPath} -> {onnxPath}");
+                int exitCode = await RunPythonWithOptionalVenvAsync(projectPath, args);
+                if (exitCode != 0 || !File.Exists(onnxPath))
+                {
+                    SafeShowWarning("ONNX导出失败，请检查日志输出");
+                    return;
+                }
+
+                SafeAppendLog($"ONNX导出完成：{onnxPath}");
+
+                string enginePath = txtTensorEnginePath.Text?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(enginePath))
+                {
+                    enginePath = Path.Combine(Path.GetDirectoryName(onnxPath), Path.GetFileNameWithoutExtension(onnxPath) + ".engine");
+                    txtTensorEnginePath.Text = enginePath;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(enginePath));
+
+                string trtWorkingDir = AutoMetalConstants.deepLabProjectPath;
+                if (!Directory.Exists(trtWorkingDir))
+                {
+                    trtWorkingDir = AppDomain.CurrentDomain.BaseDirectory;
+                }
+
+                string trtArgs = $"--onnx=\"{onnxPath}\" --saveEngine=\"{enginePath}\"";
+                SafeAppendLog($"开始TensorRT转换：{onnxPath} -> {enginePath}");
+                int trtExitCode = await RunCommandAsync(
+                    "cmd.exe",
+                    $"/c trtexec {trtArgs}",
+                    trtWorkingDir);
+                if (trtExitCode != 0 || !File.Exists(enginePath))
+                {
+                    SafeShowWarning("Engine转换失败，请确认trtexec已安装并在PATH中");
+                    return;
+                }
+
+                SafeAppendLog($"Engine转换完成：{enginePath}");
+            }
+            catch (Exception ex)
+            {
+                SafeShowWarning($"pt转engine异常：{ex.Message}");
+            }
+        }
+
+        private string EnsureOnnxExportHelperScript(string projectPath)
+        {
+            string scriptPath = Path.Combine(projectPath, "export_onnx_helper.py");
+            string scriptContent = @"
+import argparse
+from deeplab import DeeplabV3
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Export DeepLab weights to ONNX')
+    parser.add_argument('--pt', required=True)
+    parser.add_argument('--onnx', required=True)
+    parser.add_argument('--num-classes', type=int, default=2)
+    parser.add_argument('--backbone', default='mobilenet')
+    parser.add_argument('--downsample', type=int, default=16)
+    args = parser.parse_args()
+
+    deeplab = DeeplabV3(
+        model_path=args.pt,
+        num_classes=args.num_classes,
+        backbone=args.backbone,
+        downsample_factor=args.downsample,
+        cuda=False
+    )
+    deeplab.convert_to_onnx(True, args.onnx)
+";
+            File.WriteAllText(scriptPath, scriptContent, Encoding.UTF8);
+            return scriptPath;
+        }
+
+        private async Task<int> RunPythonWithOptionalVenvAsync(string projectPath, string pythonScriptArgs)
+        {
+            string activateBat = Path.Combine(projectPath, ".venv", "Scripts", "activate.bat");
+            string cmdArguments;
+            if (File.Exists(activateBat))
+            {
+                cmdArguments = $"/c \"call \"\"{activateBat}\"\" && python {pythonScriptArgs}\"";
+            }
+            else
+            {
+                string pythonExe = File.Exists(AutoMetalConstants.deepLabPythonExe)
+                    ? AutoMetalConstants.deepLabPythonExe
+                    : "python";
+                cmdArguments = $"/c \"\"{pythonExe}\"\" {pythonScriptArgs}";
+            }
+
+            return await RunCommandAsync("cmd.exe", cmdArguments, projectPath);
+        }
+
+        private async Task<int> RunCommandAsync(string fileName, string arguments, string workingDirectory)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (var p = new Process { StartInfo = psi, EnableRaisingEvents = true })
+            {
+                p.OutputDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data))
+                    {
+                        SafeAppendLog(e.Data);
+                    }
+                };
+                p.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Data))
+                    {
+                        SafeAppendLog(e.Data);
+                    }
+                };
+
+                if (!p.Start())
+                {
+                    return -1;
+                }
+                p.BeginOutputReadLine();
+                p.BeginErrorReadLine();
+
+                await Task.Run(() => p.WaitForExit());
+                return p.ExitCode;
+            }
+        }
+
+        private void btnStopTrain_Click(object sender, EventArgs e)
+        {
+            if (!_isTrainingRunning)
+            {
+                _ = StartTrainingAsync();
+                return;
+            }
+
+            StopTraining();
+        }
+
+        private async Task StartTrainingAsync()
+        {
+            if (_isTrainingRunning)
+            {
+                return;
+            }
+
+            if (!int.TryParse(txtEpoch.Text?.Trim(), out int epoch) || epoch <= 0)
+            {
+                SafeShowWarning("请先输入有效的Epoch");
+                return;
+            }
+
+            if (!int.TryParse(txtBatchSize.Text?.Trim(), out int batchSize) || batchSize <= 0)
+            {
+                SafeShowWarning("请先输入有效的BatchSize");
+                return;
+            }
+
+            string projectPath = AutoMetalConstants.deepLabProjectPath;
+            if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
+            {
+                SafeShowWarning($"训练项目目录不存在：{projectPath}");
+                return;
+            }
+
+            string trainScript = Path.Combine(projectPath, "train.py");
+            if (!File.Exists(trainScript))
+            {
+                SafeShowWarning($"未找到训练脚本：{trainScript}");
+                return;
+            }
+
+            _trainingTotalEpoch = epoch;
+            progressBarTrain.Minimum = 0;
+            progressBarTrain.Maximum = epoch;
+            progressBarTrain.Value = 0;
+
+            string quotedTrain = $"\"{trainScript}\"";
+            string quotedVocPath = $"\"{AutoMetalConstants.deepLabVocPath}\"";
+            string trainingSaveDir = Path.Combine(projectPath, "logs");
+            string quotedSaveDir = $"\"{trainingSaveDir}\"";
+            string activateBat = Path.Combine(projectPath, ".venv", "Scripts", "activate.bat");
+            string trainingArgs = $"{quotedTrain} --epochs {epoch} --batch-size {batchSize} --voc-path {quotedVocPath} --save-dir {quotedSaveDir}";
+            string cmdArguments;
+            if (File.Exists(activateBat))
+            {
+                cmdArguments = $"/c \"call \"\"{activateBat}\"\" && python {trainingArgs}\"";
+            }
+            else
+            {
+                string pythonExe = File.Exists(AutoMetalConstants.deepLabPythonExe)
+                    ? AutoMetalConstants.deepLabPythonExe
+                    : "python";
+                cmdArguments = $"/c \"\"{pythonExe}\"\" {trainingArgs}";
+            }
+
+            _trainingCancellationTokenSource?.Dispose();
+            _trainingCancellationTokenSource = new CancellationTokenSource();
+            _isTrainingRunning = true;
+            btnStopTrain.Text = "停止";
+            labelTrainStatus.Text = $"训练状态：启动中(1/{epoch})";
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = cmdArguments,
+                    WorkingDirectory = projectPath,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                _trainingProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
+                _trainingProcess.OutputDataReceived += TrainingProcess_OutputDataReceived;
+                _trainingProcess.ErrorDataReceived += TrainingProcess_OutputDataReceived;
+
+                bool started = _trainingProcess.Start();
+                if (!started)
+                {
+                    throw new Exception("训练进程未能启动");
+                }
+
+                _trainingProcess.BeginOutputReadLine();
+                _trainingProcess.BeginErrorReadLine();
+
+                using (_trainingCancellationTokenSource.Token.Register(() =>
+                {
+                    KillTrainingProcessTree();
+                }))
+                {
+                    await Task.Run(() => _trainingProcess.WaitForExit());
+                }
+
+                if (_trainingCancellationTokenSource.IsCancellationRequested)
+                {
+                    labelTrainStatus.Text = "训练状态：已停止";
+                    SafeAppendLog("训练已停止");
+                }
+                else if (_trainingProcess.ExitCode == 0)
+                {
+                    labelTrainStatus.Text = "训练状态：已完成";
+                    progressBarTrain.Value = progressBarTrain.Maximum;
+                    LoadLatestTrainingCurveImage();
+                    SafeAppendLog("训练已完成");
+                }
+                else
+                {
+                    labelTrainStatus.Text = $"训练状态：失败(ExitCode={_trainingProcess.ExitCode})";
+                    SafeAppendLog($"训练失败，退出码：{_trainingProcess.ExitCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                labelTrainStatus.Text = "训练状态：异常";
+                SafeAppendLog($"训练异常：{ex.Message}");
+            }
+            finally
+            {
+                _isTrainingRunning = false;
+                btnStopTrain.Text = "开始训练";
+                if (_trainingProcess != null)
+                {
+                    _trainingProcess.OutputDataReceived -= TrainingProcess_OutputDataReceived;
+                    _trainingProcess.ErrorDataReceived -= TrainingProcess_OutputDataReceived;
+                    _trainingProcess.Dispose();
+                    _trainingProcess = null;
+                }
+            }
+        }
+
+        private void StopTraining()
+        {
+            if (!_isTrainingRunning)
+            {
+                return;
+            }
+
+            try
+            {
+                _trainingCancellationTokenSource?.Cancel();
+                KillTrainingProcessTree();
+                labelTrainStatus.Text = "训练状态：停止中...";
+            }
+            catch
+            {
+            }
+        }
+
+        private void KillTrainingProcessTree()
+        {
+            try
+            {
+                if (_trainingProcess == null || _trainingProcess.HasExited)
+                {
+                    return;
+                }
+
+                int pid = _trainingProcess.Id;
+                try
+                {
+                    using (var killer = Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "taskkill",
+                        Arguments = $"/PID {pid} /T /F",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }))
+                    {
+                        killer?.WaitForExit(3000);
+                    }
+                }
+                catch
+                {
+                    try
+                    {
+                        _trainingProcess.Kill();
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private void TrainingProcess_OutputDataReceived(object sender, DataReceivedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(e.Data))
+            {
+                return;
+            }
+
+            string line = e.Data.Trim();
+            SafeAppendLog($"[train] {line}");
+
+            var match = _trainingEpochRegex.Match(line);
+            if (!match.Success)
+            {
+                return;
+            }
+
+            if (!int.TryParse(match.Groups[1].Value, out int currentEpoch))
+            {
+                return;
+            }
+
+            if (!int.TryParse(match.Groups[2].Value, out int totalEpochFromLog))
+            {
+                totalEpochFromLog = _trainingTotalEpoch;
+            }
+
+            int total = totalEpochFromLog > 0 ? totalEpochFromLog : Math.Max(_trainingTotalEpoch, 1);
+            int value = Math.Min(Math.Max(currentEpoch, 0), total);
+
+            if (progressBarTrain.InvokeRequired)
+            {
+                progressBarTrain.Invoke(new Action(() =>
+                {
+                    progressBarTrain.Maximum = total;
+                    progressBarTrain.Value = Math.Min(value, progressBarTrain.Maximum);
+                    labelTrainStatus.Text = $"训练状态：训练中({value}/{total})";
+                }));
+            }
+            else
+            {
+                progressBarTrain.Maximum = total;
+                progressBarTrain.Value = Math.Min(value, progressBarTrain.Maximum);
+                labelTrainStatus.Text = $"训练状态：训练中({value}/{total})";
+            }
+        }
+
+        private void LoadLatestTrainingCurveImage()
+        {
+            try
+            {
+                string logsDir = Path.Combine(AutoMetalConstants.deepLabProjectPath, "logs");
+                if (!Directory.Exists(logsDir))
+                {
+                    return;
+                }
+
+                string latestLossDir = Directory.EnumerateDirectories(logsDir, "loss_*", SearchOption.TopDirectoryOnly)
+                    .OrderByDescending(x => x)
+                    .FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(latestLossDir))
+                {
+                    return;
+                }
+
+                string curvePath = Path.Combine(latestLossDir, "epoch_loss.png");
+                if (!File.Exists(curvePath))
+                {
+                    return;
+                }
+
+                LoadImageToPictureBox(pictureBoxMergedCurve, curvePath);
+                SafeAppendLog($"已加载训练曲线图：{curvePath}");
+            }
+            catch (Exception ex)
+            {
+                SafeAppendLog($"训练曲线图加载失败：{ex.Message}");
+            }
+        }
+
+        private void btnBrowseTestSet_Click(object sender, EventArgs e)
+        {
+            using (var folderDialog = new FolderBrowserDialog())
+            {
+                if (!string.IsNullOrWhiteSpace(txtTestSetPath.Text) && Directory.Exists(txtTestSetPath.Text))
+                {
+                    folderDialog.SelectedPath = txtTestSetPath.Text;
+                }
+
+                if (folderDialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    txtTestSetPath.Text = folderDialog.SelectedPath;
+                }
+            }
+        }
+
+        private void btnBrowseEnginePath_Click(object sender, EventArgs e)
+        {
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Filter = "TensorRT Engine (*.engine)|*.engine|All files (*.*)|*.*";
+                dialog.CheckFileExists = true;
+                dialog.Multiselect = false;
+
+                if (!string.IsNullOrWhiteSpace(txtTensorEnginePath.Text))
+                {
+                    try
+                    {
+                        var baseDir = Path.GetDirectoryName(txtTensorEnginePath.Text);
+                        if (!string.IsNullOrWhiteSpace(baseDir) && Directory.Exists(baseDir))
+                        {
+                            dialog.InitialDirectory = baseDir;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    txtTensorEnginePath.Text = dialog.FileName;
+                }
+            }
+        }
+
+        private void btnStartInfer_Click(object sender, EventArgs e)
+        {
+            string testSetDir = txtTestSetPath.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(testSetDir) || !Directory.Exists(testSetDir))
+            {
+                SafeShowWarning("请先选择有效的测试集路径");
+                return;
+            }
+
+            string enginePath = txtTensorEnginePath.Text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(enginePath) || !File.Exists(enginePath))
+            {
+                SafeShowWarning("请先选择有效的Engine文件路径");
+                return;
+            }
+
+            try
+            {
+                CoverageAnalyzer.SetModelPath(enginePath);
+                SafeAppendLog($"已切换Coverage模型Engine：{enginePath}");
+            }
+            catch (Exception ex)
+            {
+                SafeShowWarning($"Engine加载失败：{ex.Message}");
+                return;
+            }
+
+            var supportedExt = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"
+            };
+            var images = Directory.EnumerateFiles(testSetDir, "*.*", SearchOption.TopDirectoryOnly)
+                .Where(p => supportedExt.Contains(Path.GetExtension(p)))
+                .OrderBy(p => p)
+                .ToList();
+
+            if (images.Count == 0)
+            {
+                SafeShowWarning("测试集目录中没有可推理图像");
+                return;
+            }
+
+            progressBarInfer.Minimum = 0;
+            progressBarInfer.Maximum = images.Count;
+            progressBarInfer.Value = 0;
+
+            int successCount = 0;
+            int failedCount = 0;
+
+            for (int i = 0; i < images.Count; i++)
+            {
+                string imagePath = images[i];
+                string fileName = Path.GetFileName(imagePath);
+                try
+                {
+                    using (var image = Cv2.ImRead(imagePath))
+                    {
+                        if (image.Empty())
+                        {
+                            failedCount++;
+                            SafeAppendLog($"推理失败(图像读取为空): {fileName}");
+                        }
+                        else
+                        {
+                            string outputPath = Path.Combine(
+                                Path.GetDirectoryName(imagePath),
+                                Path.GetFileNameWithoutExtension(imagePath) + "_mask" + Path.GetExtension(imagePath));
+                            double coverage = CoverageAnalyzer.detectImage(imagePath, null, outputPath);
+                            successCount++;
+                            SafeAppendLog($"推理完成: {fileName}, 覆盖率={coverage:F6}, 输出={outputPath}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedCount++;
+                    SafeAppendLog($"推理异常: {fileName}, 错误={ex.Message}");
+                }
+
+                progressBarInfer.Value = i + 1;
+                labelInferStatus.Text = $"推理状态：进行中 {i + 1}/{images.Count}";
+                Application.DoEvents();
+            }
+
+            labelInferStatus.Text = $"推理状态：完成 成功{successCount} 失败{failedCount}";
+            SafeAppendLog($"测试集批量推理结束，总数={images.Count}，成功={successCount}，失败={failedCount}");
+        }
+
+        private void setingsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new ParameterSettingsForm())
+            {
+                settingsForm.ShowDialog(this);
+            }
         }
 
  
@@ -422,7 +1145,55 @@ namespace AutoMetal
             // 初始状态设置为空闲
             is_free = 1;
 
+            // 连接成功后，回填设备当前参数到UI输入框
+            RefreshDeviceParamsToUI();
+
             return true;
+        }
+
+        private void RefreshDeviceParamsToUI()
+        {
+            if (m_analysis == null)
+            {
+                return;
+            }
+
+            // 读取当前XY
+            float currentX, currentY;
+            var xyRet = m_analysis.getXY(out currentX, out currentY);
+            if (xyRet == Moac_retCode.RC_FINISH)
+            {
+                SafeUpdateTextBox(textXY1, currentX.ToString("F2"));
+                SafeUpdateTextBox(textXY2, currentY.ToString("F2"));
+            }
+            else
+            {
+                SafeAppendLog($"读取XY失败: {xyRet}");
+            }
+
+            // 读取当前Z
+            float currentZ;
+            var zRet = m_analysis.getZ(out currentZ);
+            if (zRet == Moac_retCode.RC_FINISH)
+            {
+                SafeUpdateTextBox(textZ, currentZ.ToString("F2"));
+            }
+            else
+            {
+                SafeAppendLog($"读取Z失败: {zRet}");
+            }
+
+            // 读取当前对比度
+            int cMin, cMax, cCur;
+            var contrastRet = m_analysis.getContrast(out cMin, out cMax, out cCur);
+            if (contrastRet == Moac_retCode.RC_FINISH)
+            {
+                SafeUpdateTextBox(textContrast, cCur.ToString());
+            }
+            else
+            {
+                SafeAppendLog($"读取Contrast失败: {contrastRet}");
+            }
         }
 
         private void LogText(string str)
@@ -477,7 +1248,34 @@ namespace AutoMetal
 
                 string croppedImagePath = samplePath.Text.Replace(".jpg", "_cropped.jpg");
 
-                Cv2.ImWrite(croppedImagePath, processedImage.CroppedImage);
+                if (processedImage == null || processedImage.CroppedImage == null || processedImage.CroppedImage.Empty())
+                {
+                    SafeAppendLog("自动扫描后图像处理失败：裁剪图为空，跳过保存和后续分析");
+                    SafeShowWarning("未检测到镀膜样品");
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(samplePath.Text) && File.Exists(samplePath.Text))
+                        {
+                            File.Delete(samplePath.Text);
+                            SafeAppendLog($"已删除无效样品图像: {samplePath.Text}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SafeAppendLog($"删除无效样品图像失败: {ex.Message}");
+                    }
+                    SafeUpdateTextBox(expID, "");
+                    SafeUpdateTextBox(sampleID, "");
+                    SafeUpdateTextBox(samplePath, "");
+                    is_free = 1;
+                    return;
+                }
+
+                if (!TrySaveMatImage(croppedImagePath, processedImage.CroppedImage, "自动扫描裁剪图"))
+                {
+                    is_free = 1;
+                    return;
+                }
 
                 Bitmap bitmap = BitmapConverter.ToBitmap(processedImage.CroppedImage);
 
@@ -770,6 +1568,1057 @@ namespace AutoMetal
             }
         }
 
+        private bool TrySaveMatImage(string filePath, Mat image, string scene)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                SafeAppendLog($"{scene}: 保存失败，文件路径为空");
+                return false;
+            }
+
+            if (image == null || image.Empty())
+            {
+                SafeAppendLog($"{scene}: 保存失败，图像为空（可能是全黑图或未检测到有效区域）");
+                return false;
+            }
+
+            try
+            {
+                return Cv2.ImWrite(filePath, image);
+            }
+            catch (Exception ex)
+            {
+                SafeAppendLog($"{scene}: 保存失败，异常：{ex.Message}");
+                return false;
+            }
+        }
+
+        private void SafeShowWarning(string message)
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action<string>(SafeShowWarning), message);
+            }
+            else
+            {
+                MessageBox.Show(this, message, "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void btnAlgBrowseInput_Click(object sender, EventArgs e)
+        {
+            using (var folderDialog = new FolderBrowserDialog())
+            {
+                if (!string.IsNullOrWhiteSpace(txtAlgInputImage.Text) && Directory.Exists(txtAlgInputImage.Text))
+                {
+                    folderDialog.SelectedPath = txtAlgInputImage.Text;
+                }
+
+                if (folderDialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    txtAlgInputImage.Text = folderDialog.SelectedPath;
+                    LoadAlgorithmSampleTree(folderDialog.SelectedPath);
+                }
+            }
+        }
+
+        private void LoadAlgorithmSampleTree(string rootFolder)
+        {
+            treeAlgSamples.Nodes.Clear();
+            ClearAlgorithmProcessingState();
+
+            if (!Directory.Exists(rootFolder))
+            {
+                SafeShowWarning("输入图像目录不存在");
+                return;
+            }
+
+            for (int i = 1; i <= 10; i++)
+            {
+                string batchFolder = Path.Combine(rootFolder, i.ToString());
+                if (!Directory.Exists(batchFolder))
+                {
+                    continue;
+                }
+
+                var oriFolder = Directory.EnumerateDirectories(batchFolder, "*", SearchOption.TopDirectoryOnly)
+                    .FirstOrDefault(dir => string.Equals(Path.GetFileName(dir), "ori", StringComparison.OrdinalIgnoreCase));
+                if (string.IsNullOrWhiteSpace(oriFolder) || !Directory.Exists(oriFolder))
+                {
+                    continue;
+                }
+
+                var allImageFiles = Directory.EnumerateFiles(oriFolder, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(file => AlgImageExtensions.Contains(Path.GetExtension(file).ToLower()))
+                    .OrderBy(file => Path.GetFileName(file))
+                    .ToList();
+
+                var invalidNameFile = allImageFiles
+                    .FirstOrDefault(file => !_algSampleNameRegex.IsMatch(Path.GetFileNameWithoutExtension(file)));
+                if (!string.IsNullOrWhiteSpace(invalidNameFile))
+                {
+                    treeAlgSamples.Nodes.Clear();
+                    ClearAlgorithmProcessingState();
+                    SafeShowWarning($"检测到命名不符合12位规则的图像：{Path.GetFileName(invalidNameFile)}\n路径：{oriFolder}");
+                    return;
+                }
+
+                var imageFiles = allImageFiles
+                    .OrderBy(file => Path.GetFileNameWithoutExtension(file))
+                    .ToList();
+
+                var batchNode = new TreeNode($"{i} ({imageFiles.Count})");
+                foreach (var imageFile in imageFiles)
+                {
+                    var imageNode = new TreeNode(Path.GetFileName(imageFile)) { Tag = imageFile };
+                    batchNode.Nodes.Add(imageNode);
+                }
+
+                if (batchNode.Nodes.Count > 0)
+                {
+                    treeAlgSamples.Nodes.Add(batchNode);
+                }
+            }
+
+            treeAlgSamples.ExpandAll();
+            if (treeAlgSamples.Nodes.Count == 0)
+            {
+                SafeShowWarning("未找到符合规则的样品图像（结构：数字目录/ori(或Ori)/12位文件名）");
+            }
+        }
+
+        private void treeAlgSamples_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            string imagePath = e.Node.Tag as string;
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                return;
+            }
+
+            _algSelectedImagePath = imagePath;
+            _algPreprocessedImagePath = string.Empty;
+            _algBinaryImagePath = string.Empty;
+            _algStandardImagePath = string.Empty;
+            _algCroppedImagePath = string.Empty;
+            _algOutputImagePath = string.Empty;
+            _algHeatmapImagePath = string.Empty;
+            txtAlgCoverageResult.Text = "";
+            txtAlgUniformityResult.Text = "";
+            labelAlgSelectedSample.Text = $"当前样品：{Path.GetFileName(imagePath)}";
+            ClearPictureBoxImage(picAlgPreprocessed);
+            LoadImageToPictureBox(picAlgOriginal, imagePath);
+            UpdateAlgPreviewButtonState(btnAlgPreviewOriginal);
+
+            var outputPaths = GetOutputImagePathsBySource(_algSelectedImagePath);
+            _algBinaryImagePath = outputPaths.binaryPath;
+            _algStandardImagePath = outputPaths.standardPath;
+            _algCroppedImagePath = outputPaths.croppedPath;
+            _algOutputImagePath = outputPaths.outputPath;
+            _algHeatmapImagePath = outputPaths.heatmapPath;
+            if (File.Exists(_algOutputImagePath))
+            {
+                _algPreprocessedImagePath = _algOutputImagePath;
+                LoadImageToPictureBox(picAlgPreprocessed, _algOutputImagePath);
+                labelAlgPreprocessed.Text = "算法输出图（当前样品）";
+            }
+            else if (File.Exists(_algCroppedImagePath))
+            {
+                _algPreprocessedImagePath = _algCroppedImagePath;
+                LoadImageToPictureBox(picAlgPreprocessed, _algCroppedImagePath);
+                labelAlgPreprocessed.Text = "裁剪图（当前样品）";
+            }
+        }
+
+        private void btnAlgPreprocess_Click(object sender, EventArgs e)
+        {
+            var allImages = GetAllLoadedImages();
+            if (allImages.Count == 0)
+            {
+                SafeShowWarning("请先加载目录中的样品图像");
+                return;
+            }
+
+            int successCount = 0;
+            int failedCount = 0;
+            foreach (var imagePath in allImages)
+            {
+                if (TryPreprocessAndSaveOutputs(imagePath, updatePreview: false, out _))
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(_algSelectedImagePath) && File.Exists(_algSelectedImagePath))
+            {
+                var outputPaths = GetOutputImagePathsBySource(_algSelectedImagePath);
+                _algBinaryImagePath = outputPaths.binaryPath;
+                _algStandardImagePath = outputPaths.standardPath;
+                _algCroppedImagePath = outputPaths.croppedPath;
+                _algOutputImagePath = outputPaths.outputPath;
+                _algHeatmapImagePath = outputPaths.heatmapPath;
+                if (File.Exists(_algOutputImagePath))
+                {
+                    _algPreprocessedImagePath = _algOutputImagePath;
+                    LoadImageToPictureBox(picAlgPreprocessed, _algOutputImagePath);
+                    labelAlgPreprocessed.Text = "算法输出图（当前样品）";
+                }
+                else if (File.Exists(_algCroppedImagePath))
+                {
+                    _algPreprocessedImagePath = _algCroppedImagePath;
+                    LoadImageToPictureBox(picAlgPreprocessed, _algCroppedImagePath);
+                    labelAlgPreprocessed.Text = "裁剪图（当前样品）";
+                }
+            }
+
+            SafeAppendLog($"批量预处理完成：总数={allImages.Count}，成功={successCount}，失败={failedCount}");
+        }
+
+        private bool TryPreprocessAndSaveOutputs(string imagePath, bool updatePreview, out string croppedPathOut)
+        {
+            croppedPathOut = string.Empty;
+            var processedImage = ImageProcessor.ProcessImage(
+                imagePath,
+                1000000,
+                50,
+                rotate90Counterclockwise: false,
+                overwriteInputWithResized: false);
+            if (processedImage == null || processedImage.CroppedImage == null || processedImage.CroppedImage.Empty())
+            {
+                SafeShowWarning($"预处理失败：未检测到有效镀膜区域\n样品：{Path.GetFileName(imagePath)}");
+                return false;
+            }
+
+            string fileName = Path.GetFileName(imagePath);
+            string oriFolder = Path.GetDirectoryName(imagePath);
+            string parentFolder = Directory.GetParent(oriFolder)?.FullName ?? oriFolder;
+            string binaryFolder = Path.Combine(parentFolder, "binary");
+            string standardFolder = Path.Combine(parentFolder, "standard");
+            string croppedFolder = Path.Combine(parentFolder, "cropped");
+
+            Directory.CreateDirectory(binaryFolder);
+            Directory.CreateDirectory(standardFolder);
+            Directory.CreateDirectory(croppedFolder);
+
+            string binaryPath = Path.Combine(binaryFolder, fileName);
+            string standardPath = Path.Combine(standardFolder, fileName);
+            string croppedPath = Path.Combine(croppedFolder, fileName);
+            string outputPath = Path.Combine(parentFolder, "output", Path.GetFileNameWithoutExtension(fileName) + "_mask" + Path.GetExtension(fileName));
+            string heatmapPath = Path.Combine(parentFolder, "heatmap", Path.GetFileNameWithoutExtension(fileName) + "_heatmap.png");
+
+            if (!TrySaveMatImage(binaryPath, processedImage.BinaryImage, "算法页签二值图保存") ||
+                !TrySaveMatImage(standardPath, processedImage.CorrectedImage, "算法页签透视矫正图保存") ||
+                !TrySaveMatImage(croppedPath, processedImage.CroppedImage, "算法页签结果图保存"))
+            {
+                processedImage.Dispose();
+                return false;
+            }
+
+            croppedPathOut = croppedPath;
+            if (updatePreview)
+            {
+                _algBinaryImagePath = binaryPath;
+                _algStandardImagePath = standardPath;
+                _algCroppedImagePath = croppedPath;
+                _algOutputImagePath = outputPath;
+                _algHeatmapImagePath = heatmapPath;
+                _algPreprocessedImagePath = croppedPath;
+
+                if (picAlgPreprocessed.Image != null)
+                {
+                    picAlgPreprocessed.Image.Dispose();
+                }
+                picAlgPreprocessed.Image = BitmapConverter.ToBitmap(processedImage.CroppedImage);
+                labelAlgPreprocessed.Text = "裁剪图（当前样品）";
+            }
+
+            processedImage.Dispose();
+            return true;
+        }
+
+        private void btnAlgPreviewBinary_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewBinary);
+            ShowAlgProcessedPreview(_algBinaryImagePath, "二值图");
+        }
+
+        private void btnAlgPreviewStandard_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewStandard);
+            ShowAlgProcessedPreview(_algStandardImagePath, "矫正图");
+        }
+
+        private void btnAlgPreviewCropped_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewCropped);
+            ShowAlgProcessedPreview(_algCroppedImagePath, "裁剪图");
+        }
+
+        private void btnAlgPreviewOutput_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewOutput);
+            ShowAlgProcessedPreview(_algOutputImagePath, "算法输出图");
+        }
+
+        private void btnAlgPreviewHeatmap_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewHeatmap);
+            ShowAlgProcessedPreview(_algHeatmapImagePath, "热力图");
+        }
+
+        private void btnAlgPreviewOriginal_Click(object sender, EventArgs e)
+        {
+            UpdateAlgPreviewButtonState(btnAlgPreviewOriginal);
+            if (string.IsNullOrWhiteSpace(_algSelectedImagePath) || !File.Exists(_algSelectedImagePath))
+            {
+                SafeShowWarning("请先在左侧树中选择样品图像");
+                return;
+            }
+
+            LoadImageToPictureBox(picAlgOriginal, _algSelectedImagePath);
+        }
+
+        private void UpdateAlgPreviewButtonState(Button activeButton)
+        {
+            var buttons = new[]
+            {
+                btnAlgPreviewOriginal,
+                btnAlgPreviewHeatmap,
+                btnAlgPreviewOutput,
+                btnAlgPreviewBinary,
+                btnAlgPreviewStandard,
+                btnAlgPreviewCropped
+            };
+
+            foreach (var btn in buttons)
+            {
+                bool isActive = ReferenceEquals(btn, activeButton);
+                btn.FlatStyle = FlatStyle.Standard;
+                btn.UseVisualStyleBackColor = !isActive;
+                btn.BackColor = isActive ? System.Drawing.Color.LightSteelBlue : System.Drawing.SystemColors.Control;
+            }
+        }
+
+        private void ShowAlgProcessedPreview(string imagePath, string previewName)
+        {
+            if (string.IsNullOrWhiteSpace(_algSelectedImagePath) || !File.Exists(_algSelectedImagePath))
+            {
+                SafeShowWarning("请先在左侧树中选择样品图像");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                var outputPaths = GetOutputImagePathsBySource(_algSelectedImagePath);
+                if (previewName.Contains("二值"))
+                {
+                    imagePath = outputPaths.binaryPath;
+                    _algBinaryImagePath = imagePath;
+                }
+                else if (previewName.Contains("矫正"))
+                {
+                    imagePath = outputPaths.standardPath;
+                    _algStandardImagePath = imagePath;
+                }
+                else if (previewName.Contains("热力图"))
+                {
+                    imagePath = outputPaths.heatmapPath;
+                    _algHeatmapImagePath = imagePath;
+                }
+                else
+                {
+                    if (previewName.Contains("算法输出"))
+                    {
+                        imagePath = outputPaths.outputPath;
+                        _algOutputImagePath = imagePath;
+                    }
+                    else
+                    {
+                        imagePath = outputPaths.croppedPath;
+                        _algCroppedImagePath = imagePath;
+                        if (File.Exists(imagePath))
+                        {
+                            _algPreprocessedImagePath = imagePath;
+                        }
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                if (previewName.Contains("算法输出"))
+                {
+                    SafeShowWarning("当前没有可预览的算法输出图，请先执行覆盖率计算");
+                }
+                else if (previewName.Contains("热力图"))
+                {
+                    SafeShowWarning("当前没有可预览的热力图，请先执行覆盖率与均匀性计算");
+                }
+                else
+                {
+                    SafeShowWarning($"当前没有可预览的{previewName}，请先执行预处理");
+                }
+                return;
+            }
+
+            LoadImageToPictureBox(picAlgPreprocessed, imagePath);
+            labelAlgPreprocessed.Text = $"{previewName}（当前样品）";
+        }
+
+        private void radioAlgMode_CheckedChanged(object sender, EventArgs e)
+        {
+            ToggleAlgManualMaskControls(radioAlgManualMode.Checked);
+        }
+
+        private void ToggleAlgManualMaskControls(bool manualMode)
+        {
+            txtAlgMaskDir.Enabled = false;
+            btnAlgBrowseMaskDir.Enabled = false;
+            btnAlgLoadMaskList.Enabled = manualMode;
+            listBoxAlgMasks.Enabled = manualMode;
+        }
+
+        private void btnAlgBrowseMaskDir_Click(object sender, EventArgs e)
+        {
+            SafeShowWarning("手动模式Mask目录已改为自动加载：\n会从输入图像目录下各数字目录的同级 mask 文件夹读取。");
+        }
+
+        private void btnAlgLoadMaskList_Click(object sender, EventArgs e)
+        {
+            listBoxAlgMasks.Items.Clear();
+            var allImages = GetAllLoadedImages();
+            if (allImages.Count == 0)
+            {
+                SafeShowWarning("请先加载输入图像目录");
+                return;
+            }
+
+            txtAlgMaskDir.Text = "自动加载：数字目录同级 mask 文件夹";
+            var loadedMaskFiles = new List<string>();
+            var missingMaskBatches = new HashSet<string>();
+
+            foreach (var imagePath in allImages)
+            {
+                string batchName = GetBatchNameFromImagePath(imagePath);
+                var outputPaths = GetOutputImagePathsBySource(imagePath);
+                string maskDir = Path.GetDirectoryName(outputPaths.maskPath);
+                if (string.IsNullOrWhiteSpace(maskDir) || !Directory.Exists(maskDir))
+                {
+                    missingMaskBatches.Add(batchName);
+                    continue;
+                }
+
+                string sampleNameNoExt = Path.GetFileNameWithoutExtension(imagePath);
+                string matchedMask = Directory.EnumerateFiles(maskDir, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(file => AlgImageExtensions.Contains(Path.GetExtension(file).ToLower()))
+                    .FirstOrDefault(file =>
+                        string.Equals(Path.GetFileNameWithoutExtension(file), sampleNameNoExt, StringComparison.OrdinalIgnoreCase));
+
+                if (string.IsNullOrWhiteSpace(matchedMask) || !File.Exists(matchedMask))
+                {
+                    missingMaskBatches.Add(batchName);
+                    continue;
+                }
+
+                loadedMaskFiles.Add(matchedMask);
+            }
+
+            foreach (var file in loadedMaskFiles.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x))
+            {
+                listBoxAlgMasks.Items.Add(file);
+            }
+
+            SafeAppendLog($"已自动加载Mask文件数量: {listBoxAlgMasks.Items.Count}");
+            if (missingMaskBatches.Count > 0)
+            {
+                string batchList = string.Join("、", missingMaskBatches.OrderBy(x => x));
+                SafeShowWarning($"以下目录未放置完整对应的Mask图：{batchList}");
+            }
+        }
+
+        private void btnAlgRun_Click(object sender, EventArgs e)
+        {
+            // 步骤三固定按已加载的全部目录(1~10)执行，不受当前树选中节点限制
+            var runImages = GetAllLoadedImages();
+            if (runImages.Count == 0)
+            {
+                SafeShowWarning("当前没有可处理图像，请先加载目录中的样品图像");
+                return;
+            }
+
+            if (radioAlgManualMode.Checked)
+            {
+                if (listBoxAlgMasks.Items.Count == 0)
+                {
+                    SafeShowWarning("手动模式下请先加载Mask列表");
+                    return;
+                }
+            }
+
+            var batchResults = new List<AlgBatchResult>();
+            foreach (var imagePath in runImages)
+            {
+                var result = new AlgBatchResult
+                {
+                    BatchName = GetBatchNameFromImagePath(imagePath),
+                    SampleName = Path.GetFileName(imagePath),
+                    Status = "成功"
+                };
+
+                if (radioAlgManualMode.Checked)
+                {
+                    string sampleNameNoExt = Path.GetFileNameWithoutExtension(imagePath);
+                    string matchedMaskPath = listBoxAlgMasks.Items.Cast<string>()
+                        .FirstOrDefault(path => string.Equals(Path.GetFileNameWithoutExtension(path), sampleNameNoExt, StringComparison.OrdinalIgnoreCase));
+                    if (string.IsNullOrWhiteSpace(matchedMaskPath) || !File.Exists(matchedMaskPath))
+                    {
+                        result.Status = "失败：缺少同名Mask";
+                        batchResults.Add(result);
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    if (!TryPreprocessAndSaveOutputs(imagePath, updatePreview: false, out string croppedPath))
+                    {
+                        result.Status = "失败：预处理失败";
+                        batchResults.Add(result);
+                        continue;
+                    }
+
+                    var outputPaths = GetOutputImagePathsBySource(imagePath);
+                    double coverage;
+                    string maskCoveragePath;
+                    if (radioAlgManualMode.Checked)
+                    {
+                        string sampleNameNoExt = Path.GetFileNameWithoutExtension(imagePath);
+                        string matchedMaskPath = listBoxAlgMasks.Items.Cast<string>()
+                            .First(path => string.Equals(Path.GetFileNameWithoutExtension(path), sampleNameNoExt, StringComparison.OrdinalIgnoreCase));
+                        coverage = GenerateCoverageFromManualMask(
+                            croppedPath,
+                            matchedMaskPath,
+                            outputPaths.maskPath,
+                            outputPaths.outputPath,
+                            out maskCoveragePath);
+                    }
+                    else
+                    {
+                        coverage = CoverageAnalyzer.detectImage(croppedPath, outputPaths.maskPath, outputPaths.outputPath);
+                        maskCoveragePath = outputPaths.maskPath;
+                    }
+                    result.Coverage = coverage;
+                    string outputCoveragePath = outputPaths.outputPath;
+                    result.AlgorithmImagePath = File.Exists(outputCoveragePath) ? outputCoveragePath : croppedPath;
+                    if (Math.Abs(coverage) < 1e-12)
+                    {
+                        result.Uniformity = double.NaN;
+                        result.Status = "覆盖率为0，均匀性记为NaN（不参与平均）";
+                    }
+                    else
+                    {
+                        if (!File.Exists(outputCoveragePath))
+                        {
+                            result.Uniformity = double.NaN;
+                            result.Status = "失败：缺少用于均匀性计算的mask";
+                        }
+                        else
+                        {
+                            result.Uniformity = ImageUniformityCalculator.CalculateUniformity(
+                                croppedPath,
+                                maskCoveragePath,
+                                gaussianKsize: 101,
+                                gaussianSigma: 0.0,
+                                applyIlluminationCorrection: false);
+                            TryGenerateUniformityHeatmapByPython(
+                                croppedPath,
+                                maskCoveragePath,
+                                outputPaths.heatmapPath,
+                                invertMask: radioAlgManualMode.Checked);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.Status = $"失败：{ex.Message}";
+                }
+
+                batchResults.Add(result);
+            }
+
+            if (radioAlgAutoMode.Checked)
+            {
+                var selectedResult = batchResults.FirstOrDefault(r =>
+                    string.Equals(r.SampleName, Path.GetFileName(_algSelectedImagePath), StringComparison.OrdinalIgnoreCase));
+                if (selectedResult != null && !string.IsNullOrWhiteSpace(selectedResult.AlgorithmImagePath) && File.Exists(selectedResult.AlgorithmImagePath))
+                {
+                    LoadImageToPictureBox(picAlgPreprocessed, selectedResult.AlgorithmImagePath);
+                    labelAlgPreprocessed.Text = "算法处理图（当前样品）";
+                }
+            }
+
+            var successRows = batchResults
+                .Where(r => r.Coverage.HasValue
+                            && r.Uniformity.HasValue
+                            && !double.IsNaN(r.Uniformity.Value)
+                            && r.Coverage.Value > 0)
+                .ToList();
+
+            _algDirectoryAverages = successRows
+                .GroupBy(r => string.IsNullOrWhiteSpace(r.BatchName) ? "未知目录" : r.BatchName)
+                .OrderBy(g => g.Key)
+                .Select(g => new AlgDirectoryAverage
+                {
+                    BatchName = g.Key,
+                    CoverageAvg = g.Average(x => x.Coverage.Value),
+                    UniformityAvg = g.Average(x => x.Uniformity.Value),
+                    SampleCount = g.Count()
+                })
+                .ToList();
+
+            if (_algDirectoryAverages.Count == 1)
+            {
+                txtAlgCoverageResult.Text = _algDirectoryAverages[0].CoverageAvg.ToString("F6");
+                txtAlgUniformityResult.Text = _algDirectoryAverages[0].UniformityAvg.ToString("F6");
+            }
+            else if (_algDirectoryAverages.Count > 1)
+            {
+                txtAlgCoverageResult.Text = $"共{_algDirectoryAverages.Count}个目录，点击“查看目录均值”";
+                txtAlgUniformityResult.Text = $"共{_algDirectoryAverages.Count}个目录，点击“查看目录均值”";
+            }
+            else
+            {
+                txtAlgCoverageResult.Text = "";
+                txtAlgUniformityResult.Text = "";
+            }
+
+            ShowBatchResultDialog(batchResults);
+            SafeAppendLog($"算法页签批量计算完成：总数={batchResults.Count}, 成功={successRows.Count}, 失败={batchResults.Count - successRows.Count}");
+            foreach (var avg in _algDirectoryAverages)
+            {
+                SafeAppendLog($"目录{avg.BatchName} 平均覆盖率={avg.CoverageAvg:F6}, 平均均匀性={avg.UniformityAvg:F6}");
+            }
+        }
+
+        private void btnAlgShowDirAverages_Click(object sender, EventArgs e)
+        {
+            if (_algDirectoryAverages == null || _algDirectoryAverages.Count == 0)
+            {
+                SafeShowWarning("暂无目录均值数据，请先执行“开始处理并计算”");
+                return;
+            }
+
+            ShowDirectoryAverageDialog(_algDirectoryAverages);
+        }
+
+        private string GetBatchNameFromImagePath(string imagePath)
+        {
+            try
+            {
+                string oriFolder = Path.GetDirectoryName(imagePath);
+                string batchFolder = Directory.GetParent(oriFolder)?.FullName;
+                return string.IsNullOrWhiteSpace(batchFolder) ? "未知目录" : Path.GetFileName(batchFolder);
+            }
+            catch
+            {
+                return "未知目录";
+            }
+        }
+
+        private List<string> GetBatchImagesFromCurrentSelection()
+        {
+            var selectedNode = treeAlgSamples.SelectedNode;
+            if (selectedNode == null)
+            {
+                return new List<string>();
+            }
+
+            TreeNode batchNode = selectedNode;
+            while (batchNode.Parent != null)
+            {
+                batchNode = batchNode.Parent;
+            }
+
+            var imagePaths = new List<string>();
+            foreach (TreeNode child in batchNode.Nodes)
+            {
+                if (child.Tag is string path && File.Exists(path))
+                {
+                    imagePaths.Add(path);
+                }
+            }
+
+            return imagePaths
+                .OrderBy(p => Path.GetFileNameWithoutExtension(p))
+                .ToList();
+        }
+
+        private List<string> GetAllLoadedImages()
+        {
+            var all = new List<string>();
+            foreach (TreeNode batchNode in treeAlgSamples.Nodes)
+            {
+                foreach (TreeNode imageNode in batchNode.Nodes)
+                {
+                    if (imageNode.Tag is string path && File.Exists(path))
+                    {
+                        all.Add(path);
+                    }
+                }
+            }
+
+            return all.OrderBy(p => p).ToList();
+        }
+
+        private (string binaryPath, string standardPath, string croppedPath, string outputPath, string maskPath, string heatmapPath) GetOutputImagePathsBySource(string sourceImagePath)
+        {
+            string fileName = Path.GetFileName(sourceImagePath);
+            string oriFolder = Path.GetDirectoryName(sourceImagePath);
+            string parentFolder = Directory.GetParent(oriFolder)?.FullName ?? oriFolder;
+            return (
+                Path.Combine(parentFolder, "binary", fileName),
+                Path.Combine(parentFolder, "standard", fileName),
+                Path.Combine(parentFolder, "cropped", fileName),
+                Path.Combine(parentFolder, "output", fileName),
+                Path.Combine(parentFolder, "mask", fileName),
+                Path.Combine(parentFolder, "heatmap", Path.GetFileNameWithoutExtension(fileName) + "_heatmap.png")
+            );
+        }
+
+        private void TryGenerateUniformityHeatmapByPython(string imagePath, string maskPath, string heatmapPath, bool invertMask)
+        {
+            try
+            {
+                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "uniformity_heatmap.py");
+                if (!File.Exists(scriptPath))
+                {
+                    SafeAppendLog($"热力图脚本不存在: {scriptPath}");
+                    return;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(heatmapPath));
+                string heatmapMaskPath = maskPath;
+                if (invertMask)
+                {
+                    string invertedMaskPath = CreateInvertedMaskForHeatmap(maskPath, heatmapPath);
+                    if (string.IsNullOrWhiteSpace(invertedMaskPath) || !File.Exists(invertedMaskPath))
+                    {
+                        SafeAppendLog($"热力图生成失败：mask取反失败，原始mask={maskPath}");
+                        return;
+                    }
+
+                    heatmapMaskPath = invertedMaskPath;
+                }
+
+                string args = $"\"{scriptPath}\" --image \"{imagePath}\" --mask \"{heatmapMaskPath}\" --output \"{heatmapPath}\"";
+                if (RunPythonProcess("python", args))
+                {
+                    SafeAppendLog($"均匀性热力图已生成: {heatmapPath}");
+                    return;
+                }
+
+                // Windows兜底：尝试 py -3
+                if (RunPythonProcess("py", $"-3 {args}"))
+                {
+                    SafeAppendLog($"均匀性热力图已生成: {heatmapPath}");
+                    return;
+                }
+
+                SafeAppendLog("热力图生成失败：python/py 调用均未成功");
+            }
+            catch (Exception ex)
+            {
+                SafeAppendLog($"热力图生成异常: {ex.Message}");
+            }
+        }
+
+        private string CreateInvertedMaskForHeatmap(string maskPath, string heatmapPath)
+        {
+            if (string.IsNullOrWhiteSpace(maskPath) || !File.Exists(maskPath))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                string heatmapDir = Path.GetDirectoryName(heatmapPath);
+                Directory.CreateDirectory(heatmapDir);
+                string invertedMaskPath = Path.Combine(
+                    heatmapDir,
+                    Path.GetFileNameWithoutExtension(maskPath) + "_inverted_for_heatmap.png");
+
+                using (var mask = Cv2.ImRead(maskPath, ImreadModes.Color))
+                using (var invertedMask = new Mat())
+                {
+                    if (mask.Empty())
+                    {
+                        return string.Empty;
+                    }
+
+                    // 取反规则：黑色 -> 白色，其他颜色 -> 黑色
+                    Cv2.InRange(mask, new Scalar(0, 0, 0), new Scalar(0, 0, 0), invertedMask);
+                    Cv2.ImWrite(invertedMaskPath, invertedMask);
+                }
+
+                return invertedMaskPath;
+            }
+            catch (Exception ex)
+            {
+                SafeAppendLog($"热力图mask取反失败: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        private bool RunPythonProcess(string fileName, string arguments)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                using (var p = Process.Start(psi))
+                {
+                    if (p == null)
+                    {
+                        return false;
+                    }
+
+                    string stdOut = p.StandardOutput.ReadToEnd();
+                    string stdErr = p.StandardError.ReadToEnd();
+                    p.WaitForExit();
+                    if (p.ExitCode != 0)
+                    {
+                        SafeAppendLog($"{fileName} 运行失败: {stdErr}");
+                        return false;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(stdOut))
+                    {
+                        SafeAppendLog(stdOut.Trim());
+                    }
+                    return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private double GenerateCoverageFromManualMask(string croppedPath, string manualMaskPath, string targetMaskPath, string targetOutputPath, out string savedMaskPath)
+        {
+            savedMaskPath = string.Empty;
+            using (var cropped = Cv2.ImRead(croppedPath, ImreadModes.Color))
+            using (var mask = Cv2.ImRead(manualMaskPath, ImreadModes.Color))
+            {
+                if (cropped.Empty() || mask.Empty())
+                {
+                    throw new Exception("手动模式图像或mask读取失败");
+                }
+
+                if (cropped.Size() != mask.Size())
+                {
+                    Cv2.Resize(mask, mask, cropped.Size(), 0, 0, InterpolationFlags.Nearest);
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(targetMaskPath));
+                Directory.CreateDirectory(Path.GetDirectoryName(targetOutputPath));
+
+                // 手动模式统一保存为png，避免同名样品出现jpg/png两份mask
+                string maskDir = Path.GetDirectoryName(targetMaskPath);
+                string maskNameNoExt = Path.GetFileNameWithoutExtension(targetMaskPath);
+                savedMaskPath = Path.Combine(maskDir, maskNameNoExt + ".png");
+                CleanupDuplicateManualMasks(maskDir, maskNameNoExt, savedMaskPath);
+                Cv2.ImWrite(savedMaskPath, mask);
+
+                // 基于原图+mask叠加生成output可视化图
+                // 手动模式下，blend使用取反后的mask：
+                // 黑色(0,0,0)->白色(255,255,255)，其他颜色->黑色(0,0,0)
+                using (var blackMask = new Mat())
+                using (var invertedForBlend = new Mat())
+                using (var blended = new Mat())
+                {
+                    Cv2.InRange(mask, new Scalar(0, 0, 0), new Scalar(0, 0, 0), blackMask);
+                    Cv2.CvtColor(blackMask, invertedForBlend, ColorConversionCodes.GRAY2BGR);
+                    Cv2.AddWeighted(cropped, 0.6, invertedForBlend, 0.4, 0.0, blended);
+                    Cv2.ImWrite(targetOutputPath, blended);
+                }
+
+                return CoverageAnalyzer.getRatio(mask);
+            }
+        }
+
+        private void CleanupDuplicateManualMasks(string maskDir, string maskNameNoExt, string keepPath)
+        {
+            string[] candidates = { ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" };
+            foreach (var ext in candidates)
+            {
+                string path = Path.Combine(maskDir, maskNameNoExt + ext);
+                if (!string.Equals(path, keepPath, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+        }
+
+        private void ShowBatchResultDialog(List<AlgBatchResult> batchResults)
+        {
+            var dialog = new Form
+            {
+                Text = "批量处理结果",
+                Width = 760,
+                Height = 520,
+                StartPosition = FormStartPosition.CenterParent
+            };
+
+            var grid = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AutoGenerateColumns = false
+            };
+
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "目录", DataPropertyName = "BatchName", Width = 80 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "样品", DataPropertyName = "SampleName", Width = 160 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "覆盖率", DataPropertyName = "CoverageText", Width = 140 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "均匀性", DataPropertyName = "UniformityText", Width = 140 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "状态", DataPropertyName = "Status", Width = 180 });
+
+            var rows = batchResults.Select(r => new
+            {
+                r.BatchName,
+                r.SampleName,
+                CoverageText = r.Coverage.HasValue ? r.Coverage.Value.ToString("F6") : "-",
+                UniformityText = r.Uniformity.HasValue
+                    ? (double.IsNaN(r.Uniformity.Value) ? "NaN" : r.Uniformity.Value.ToString("F6"))
+                    : "-",
+                r.Status
+            }).ToList();
+
+            grid.DataSource = rows;
+            dialog.Controls.Add(grid);
+            dialog.ShowDialog(this);
+        }
+
+        private void ShowDirectoryAverageDialog(List<AlgDirectoryAverage> directoryAverages)
+        {
+            var dialog = new Form
+            {
+                Text = "目录均值结果",
+                Width = 560,
+                Height = 420,
+                StartPosition = FormStartPosition.CenterParent
+            };
+
+            var grid = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AllowUserToDeleteRows = false,
+                AutoGenerateColumns = false
+            };
+
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "目录", DataPropertyName = "BatchName", Width = 80 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "样品数", DataPropertyName = "SampleCount", Width = 80 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "平均覆盖率", DataPropertyName = "CoverageAvgText", Width = 150 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "平均均匀性", DataPropertyName = "UniformityAvgText", Width = 150 });
+
+            var rows = directoryAverages.Select(x => new
+            {
+                x.BatchName,
+                x.SampleCount,
+                CoverageAvgText = x.CoverageAvg.ToString("F6"),
+                UniformityAvgText = x.UniformityAvg.ToString("F6")
+            }).ToList();
+
+            grid.DataSource = rows;
+            dialog.Controls.Add(grid);
+            dialog.ShowDialog(this);
+        }
+
+        private void LoadImageToPictureBox(PictureBox pictureBox, string imagePath)
+        {
+            if (!File.Exists(imagePath))
+            {
+                return;
+            }
+
+            try
+            {
+                using (var image = Image.FromFile(imagePath))
+                {
+                    ClearPictureBoxImage(pictureBox);
+                    pictureBox.Image = new Bitmap(image);
+                }
+            }
+            catch (Exception ex)
+            {
+                SafeShowWarning($"图像加载失败: {ex.Message}");
+            }
+        }
+
+        private static void ClearPictureBoxImage(PictureBox pictureBox)
+        {
+            if (pictureBox.Image != null)
+            {
+                pictureBox.Image.Dispose();
+                pictureBox.Image = null;
+            }
+        }
+
+        private void ClearAlgorithmProcessingState()
+        {
+            _algSelectedImagePath = string.Empty;
+            _algPreprocessedImagePath = string.Empty;
+            _algBinaryImagePath = string.Empty;
+            _algStandardImagePath = string.Empty;
+            _algCroppedImagePath = string.Empty;
+            _algOutputImagePath = string.Empty;
+            _algHeatmapImagePath = string.Empty;
+            _algDirectoryAverages = new List<AlgDirectoryAverage>();
+            labelAlgSelectedSample.Text = "当前样品：未选择任何样品";
+            labelAlgPreprocessed.Text = "预处理后（当前样品）";
+            UpdateAlgPreviewButtonState(btnAlgPreviewOriginal);
+            txtAlgCoverageResult.Text = "";
+            txtAlgUniformityResult.Text = "";
+            listBoxAlgMasks.Items.Clear();
+            ClearPictureBoxImage(picAlgOriginal);
+            ClearPictureBoxImage(picAlgPreprocessed);
+        }
+
+        private (string x0, string y0, string x1, string y1) GetCurrentScanCoordinates()
+        {
+            if (radioButton2.Checked)
+            {
+                return (
+                    AutoMetalConstants.test_leftTop_x,
+                    AutoMetalConstants.test_leftTop_y,
+                    AutoMetalConstants.test_rightBottom_x,
+                    AutoMetalConstants.test_rightBottom_y
+                );
+            }
+
+            return (
+                AutoMetalConstants.normal_leftTop_x,
+                AutoMetalConstants.normal_leftTop_y,
+                AutoMetalConstants.normal_rightBottom_x,
+                AutoMetalConstants.normal_rightBottom_y
+            );
+        }
+
 
         // 引用监听函数
         private void ListenForMessages()
@@ -821,11 +2670,12 @@ namespace AutoMetal
                         SafeUpdateTextBox(expID, expId);
                         SafeUpdateTextBox(sampleID, sampleId);
 
-                        // 触发: 自动扫描
-                        SafeUpdateTextBox(textX0, AutoMetalConstants.leftTop_x);
-                        SafeUpdateTextBox(textY0, AutoMetalConstants.leftTop_y);
-                        SafeUpdateTextBox(textX1, AutoMetalConstants.rightBottom_x);
-                        SafeUpdateTextBox(textY1, AutoMetalConstants.rightBottom_y);
+                        // 根据运行模式（正常/测试）加载对应扫描坐标
+                        var scanCoords = GetCurrentScanCoordinates();
+                        SafeUpdateTextBox(textX0, scanCoords.x0);
+                        SafeUpdateTextBox(textY0, scanCoords.y0);
+                        SafeUpdateTextBox(textX1, scanCoords.x1);
+                        SafeUpdateTextBox(textY1, scanCoords.y1);
 
                         Hand_PerformAutoScan(expId, sampleId);
                     }
@@ -853,10 +2703,47 @@ namespace AutoMetal
             }
             else
             {
-                // 直接操作UI控件
-                listBoxInfo.Items.Add($"{DateTime.Now:HH:mm:ss} - {message}");
+                // 直接操作UI控件。ListBox不支持自动换行，这里手动折行避免单行过长。
+                var wrappedLines = WrapLogMessage(message, 80);
+                string timePrefix = $"{DateTime.Now:HH:mm:ss} - ";
+                for (int i = 0; i < wrappedLines.Count; i++)
+                {
+                    string prefix = i == 0 ? timePrefix : new string(' ', timePrefix.Length);
+                    listBoxInfo.Items.Add(prefix + wrappedLines[i]);
+                }
                 listBoxInfo.TopIndex = listBoxInfo.Items.Count - 1; // 自动滚动到最后一行
             }
+        }
+
+        private List<string> WrapLogMessage(string message, int maxLineLength)
+        {
+            var lines = new List<string>();
+            if (string.IsNullOrEmpty(message))
+            {
+                lines.Add(string.Empty);
+                return lines;
+            }
+
+            var rawLines = message.Replace("\r\n", "\n").Split('\n');
+            foreach (var raw in rawLines)
+            {
+                string remaining = raw;
+                while (remaining.Length > maxLineLength)
+                {
+                    int breakPos = remaining.LastIndexOf(' ', maxLineLength);
+                    if (breakPos <= 0)
+                    {
+                        breakPos = maxLineLength;
+                    }
+
+                    lines.Add(remaining.Substring(0, breakPos).TrimEnd());
+                    remaining = remaining.Substring(breakPos).TrimStart();
+                }
+
+                lines.Add(remaining);
+            }
+
+            return lines;
         }
 
         private void btnStartServer_Click(object sender, EventArgs e)
@@ -1139,11 +3026,13 @@ namespace AutoMetal
                         if (File.Exists(sampleData.CoverageAnalysisImagePath))
                         {
                             var image_3 = Image.FromFile(sampleData.CoverageAnalysisImagePath);
-
-                            PictureBoxHelper.EnableImageInteraction(picBoxSampleAbnormal, image_3);
-
-                            //添加浮动按钮
-                            PictureBoxHelper.AddInternalControls(picBoxSampleAbnormal);
+                            var abnormalPictureBox = this.Controls.Find("picBoxSampleAbnormal", true).FirstOrDefault() as PictureBox;
+                            if (abnormalPictureBox != null)
+                            {
+                                PictureBoxHelper.EnableImageInteraction(abnormalPictureBox, image_3);
+                                // 添加浮动按钮
+                                PictureBoxHelper.AddInternalControls(abnormalPictureBox);
+                            }
                         }
                         else
                         {
@@ -1292,8 +3181,7 @@ namespace AutoMetal
             for (int i = 1; i <= 5; i++)
             {
 
-                Tuple<double, string> res = ImageUniformityCalculator.CalculateUniformity(samples[i - 1].OriginalImagePath);
-                Console.WriteLine($"{res}");
+                Console.WriteLine("batch sample render");
                 // 查找对应的控件
                 var uniLabel = this.Controls.Find($"batchUniLabel_{i}", true).FirstOrDefault() as Label;
                 var pictureBox = this.Controls.Find($"batchPictureBox{i}", true).FirstOrDefault() as PictureBox;
@@ -1475,14 +3363,21 @@ namespace AutoMetal
                 ImageProcessor.ProcessResult processedImage = ImageProcessor.ProcessImage(imagePath);
                 string croppedImagePath = Path.Combine(Path.GetDirectoryName(imagePath),
                     Path.GetFileNameWithoutExtension(imagePath) + "_cropped.jpg");
-                Cv2.ImWrite(croppedImagePath, processedImage.CroppedImage);
+                if (processedImage == null || processedImage.CroppedImage == null || processedImage.CroppedImage.Empty())
+                {
+                    SafeAppendLog($"功能测试: 图像 {imageName} 裁剪结果为空，跳过该图");
+                    continue;
+                }
+                if (!TrySaveMatImage(croppedImagePath, processedImage.CroppedImage, $"功能测试保存裁剪图({imageName})"))
+                {
+                    continue;
+                }
 
                 // 计算 glassnumber（基于原图）
                 string glassNumber = glassNumberAnalyzer.GetGlassNumber(imagePath);
 
                 // ===== 计算均匀性（基于裁剪图） =====
-                Tuple<double, string> res = ImageUniformityCalculator.CalculateUniformity(croppedImagePath);
-                double resValue = res.Item1;
+                double resValue = double.NaN;
 
                 // ===== 计算覆盖率（基于裁剪图） =====
                 double ratio = CoverageAnalyzer.detectImage(croppedImagePath);
@@ -1497,6 +3392,10 @@ namespace AutoMetal
             MessageBox.Show("处理完成，结果已保存到 result.txt");
         }
 
+        private void label14_Click(object sender, EventArgs e)
+        {
+
+        }
     }
 
 

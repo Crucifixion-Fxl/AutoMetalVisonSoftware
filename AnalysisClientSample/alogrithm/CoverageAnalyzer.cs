@@ -19,10 +19,46 @@ namespace ImageAnalysis
         // 算法模型基于deepLabV3+，模型输入尺寸 512x512，输出2通道
         public static string modelPath = AutoMetalConstants.deeplabv3PlusEnginePath;
         public static Nvinfer predictor = new Nvinfer(modelPath);
+        private static readonly object _predictorLock = new object();
+
+        public static void SetModelPath(string newModelPath)
+        {
+            if (string.IsNullOrWhiteSpace(newModelPath))
+            {
+                throw new ArgumentException("engine路径不能为空", nameof(newModelPath));
+            }
+
+            if (!File.Exists(newModelPath))
+            {
+                throw new FileNotFoundException("engine文件不存在", newModelPath);
+            }
+
+            lock (_predictorLock)
+            {
+                if (string.Equals(modelPath, newModelPath, StringComparison.OrdinalIgnoreCase) && predictor != null)
+                {
+                    return;
+                }
+
+                modelPath = newModelPath;
+                predictor = new Nvinfer(modelPath);
+            }
+        }
 
 
 
         public static double detectImage(string imagePath)
+        {
+            string dir = Path.GetDirectoryName(imagePath);
+            string nameWithoutExt = Path.GetFileNameWithoutExtension(imagePath);
+            string ext = Path.GetExtension(imagePath);
+            string defaultOutputPath = Path.Combine(dir, nameWithoutExt + "_mask" + ext);
+
+            // 兼容旧调用：只给输出图路径，mask图不额外保存
+            return detectImage(imagePath, null, defaultOutputPath);
+        }
+
+        public static double detectImage(string imagePath, string maskSavePath, string outputSavePath)
         {
             // 读取并转换颜色
             Mat image = Cv2.ImRead(imagePath);
@@ -41,10 +77,13 @@ namespace ImageAnalysis
             float[] inputdata = MatToNormalizedFloatArray(image_data);
 
             // 推理
-            predictor.LoadInferenceData("images", inputdata);
-            predictor.infer();
-
-            float[] outputRes = predictor.GetInferenceResult("output");
+            float[] outputRes;
+            lock (_predictorLock)
+            {
+                predictor.LoadInferenceData("images", inputdata);
+                predictor.infer();
+                outputRes = predictor.GetInferenceResult("output");
+            }
 
             Mat mask = CreateMaskFromSoftmax(outputRes);
 
@@ -55,16 +94,16 @@ namespace ImageAnalysis
             Cv2.CvtColor(image, image, ColorConversionCodes.RGB2BGR);
             Cv2.AddWeighted(image, 0.6, mask, 0.4, 0.0, blended);
 
-            // =========================
-            // ⭐ 生成保存路径
-            // =========================
-            string dir = Path.GetDirectoryName(imagePath);
-            string nameWithoutExt = Path.GetFileNameWithoutExtension(imagePath);
-            string ext = Path.GetExtension(imagePath);
-
-            string savePath = Path.Combine(dir, nameWithoutExt + "_mask" + ext);
-
-            Cv2.ImWrite(savePath, blended);
+            if (!string.IsNullOrWhiteSpace(maskSavePath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(maskSavePath));
+                Cv2.ImWrite(maskSavePath, mask);
+            }
+            if (!string.IsNullOrWhiteSpace(outputSavePath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(outputSavePath));
+                Cv2.ImWrite(outputSavePath, blended);
+            }
 
             return getRatio(mask);
         }

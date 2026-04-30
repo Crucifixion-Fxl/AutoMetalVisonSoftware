@@ -178,6 +178,9 @@
     <Compile Include="alogrithm\SimilarityAnalyzer.cs" />
     <Compile Include="alogrithm\glassNumberAnalyzer.cs" />
     <Compile Include="alogrithm\Yolov8Det.cs" />
+    <Compile Include="ParameterSettingsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="database\SampleDBHelper.cs" />
     <Compile Include="plot\Uniform.cs" />
     <Compile Include="utils\AnalysisUtils.cs" />
@@ -241,6 +244,9 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="resource\soft.ico" />
+    <Content Include="scripts\uniformity_heatmap.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

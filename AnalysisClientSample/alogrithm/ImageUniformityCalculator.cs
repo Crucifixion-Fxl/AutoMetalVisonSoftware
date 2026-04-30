@@ -13,70 +13,156 @@ namespace ImageAnalysis
 {
     public class ImageUniformityCalculator
     {
-        /// <summary>
-        /// 使用GLCM计算灰度图像的均匀性（能量）
-        /// </summary>
-        /// <param name="imagePath">图像路径</param>
-        /// <param name="levels">灰度级别数（默认16）</param>
-        /// <param name="distances">像素距离列表（默认[1]）</param>
-        /// <param name="angles">角度列表（弧度）（默认[0, 45°, 90°, 135°]）</param>
-        /// <param name="visualize">是否可视化GLCM矩阵</param>
-        /// <returns>平均均匀性值（值越高表示越均匀）</returns>
-        public static Tuple<double,string> CalculateUniformity(string imagePath, int levels = 16, 
-            List<int> distances = null, List<double> angles = null, bool visualize = false)
+        public class MaskUniformityResult
         {
-            // 设置默认值
-            if (distances == null)
-                distances = new List<int> { 1 };
-            
-            if (angles == null)
-                angles = new List<double> { 0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4 };
+            public double MuMaskRaw { get; set; }
+            public double MuCorrected { get; set; }
+            public double SigmaCorrected { get; set; }
+            public double UniformityU { get; set; }
+            public int CoatingPixelCount { get; set; }
+            public string HeatmapPath { get; set; }
+        }
 
-            // 读取图像并转换为灰度
-            Mat img = Cv2.ImRead(imagePath, ImreadModes.Grayscale);
-            if (img.Empty())
+        /// <summary>
+        /// 仅保留mask版本均匀性接口：直接返回 UniformityU
+        /// </summary>
+        public static double CalculateUniformity(
+            string imagePath,
+            string maskPath,
+            int gaussianKsize = 101,
+            double gaussianSigma = 0.0,
+            bool applyIlluminationCorrection = false)
+        {
+            return CalculateUniformityByMask(
+                imagePath,
+                maskPath,
+                gaussianKsize,
+                gaussianSigma,
+                applyIlluminationCorrection).UniformityU;
+        }
+
+        /// <summary>
+        /// 基于mask的均匀性计算（与Python版规则一致）：
+        /// 1) mask非纯黑色(>0)为统计区
+        /// 2) 无mask时默认整图为镀膜区
+        /// 3) 仅在镀膜区统计均值/方差/均匀性
+        /// 4) U = 1 - sigma / mu
+        /// </summary>
+        public static MaskUniformityResult CalculateUniformityByMask(
+            string imagePath,
+            string maskPath = null,
+            int gaussianKsize = 101,
+            double gaussianSigma = 0.0,
+            bool applyIlluminationCorrection = false)
+        {
+            if (gaussianKsize <= 0 || gaussianKsize % 2 == 0)
             {
-                throw new ArgumentException("图像加载失败，请检查路径。");
+                throw new ArgumentException("gaussianKsize 必须是正奇数");
             }
 
-            // 量化灰度值
-            Mat imgReduced = new Mat();
-            img.ConvertTo(imgReduced, MatType.CV_8UC1, (double)levels / 256.0);
-
-            // 计算GLCM并求能量
-            double uniformitySum = 0.0;
-            int count = distances.Count * angles.Count;
-
-            // 一个列表存储每个图像的名称
-
-            List<string> uniformityFilepaths = new List<string>();
-
-            foreach (int distance in distances)
+            Mat imageGray = Cv2.ImRead(imagePath, ImreadModes.Grayscale);
+            if (imageGray.Empty())
             {
-                foreach (double angle in angles)
+                throw new ArgumentException($"图像加载失败，请检查路径: {imagePath}");
+            }
+
+            Mat coatingMask = BuildCoatingMask(imageGray.Size(), maskPath);
+            int coatingPixelCount = Cv2.CountNonZero(coatingMask);
+            if (coatingPixelCount == 0)
+            {
+                imageGray.Dispose();
+                coatingMask.Dispose();
+                return new MaskUniformityResult
                 {
-                    double[,] glcm = ComputeGLCM(imgReduced, distance, angle, levels);
-                    double energy = ComputeEnergy(glcm);
-                    uniformitySum += energy;
-
-                    if (visualize)
-                    {
-                        //Console.WriteLine($"距离={distance}, 角度={angle * 180 / Math.PI:F0}°, 能量={energy:F4}");
-                        //string uniformityFilepath = SaveGLCMMatrixImage(imagePath, sampleId, glcm, distance, angle, count);
-                        //uniformityFilepaths.Add(uniformityFilepath);
-                    }
-                }
+                    MuMaskRaw = double.NaN,
+                    MuCorrected = double.NaN,
+                    SigmaCorrected = double.NaN,
+                    UniformityU = double.NaN,
+                    CoatingPixelCount = 0,
+                    HeatmapPath = string.Empty
+                };
             }
 
-            img.Dispose();
-            imgReduced.Dispose();
+            // 镀膜区原始均值（仅镀膜区参与）
+            double muMaskRaw = Cv2.Mean(imageGray, coatingMask).Val0;
 
-            double averageUniformity = uniformitySum / count;
+            Mat imageFloat = new Mat();
+            imageGray.ConvertTo(imageFloat, MatType.CV_64FC1);
 
-            // 使用 string.Join 方法，用分号连接
-            string joinedString = string.Join(";", uniformityFilepaths);
+            Mat corrected = imageFloat.Clone();
+            if (applyIlluminationCorrection)
+            {
+                // 非镀膜区填充为muMaskRaw，用于估计背景
+                Mat filled = imageFloat.Clone();
+                Mat nonCoatingMask = new Mat();
+                Cv2.BitwiseNot(coatingMask, nonCoatingMask);
+                filled.SetTo(new Scalar(muMaskRaw), nonCoatingMask);
 
-            return new Tuple<double, string>(averageUniformity, joinedString);
+                Mat background = new Mat();
+                Cv2.GaussianBlur(filled, background, new Size(gaussianKsize, gaussianKsize), gaussianSigma, gaussianSigma);
+
+                // corrected = image - background + muMaskRaw（仅镀膜区）
+                Mat temp = new Mat();
+                Cv2.Subtract(imageFloat, background, temp);
+                Cv2.Add(temp, new Scalar(muMaskRaw), temp);
+                temp.CopyTo(corrected, coatingMask);
+                Cv2.Min(corrected, new Scalar(255.0), corrected);
+                Cv2.Max(corrected, new Scalar(0.0), corrected);
+
+                temp.Dispose();
+                background.Dispose();
+                nonCoatingMask.Dispose();
+                filled.Dispose();
+            }
+
+            // 仅镀膜区统计 corrected 的均值与方差
+            Cv2.MeanStdDev(corrected, out Scalar muScalar, out Scalar stdScalar, coatingMask);
+            double muCorrected = muScalar.Val0;
+            double sigmaCorrected = stdScalar.Val0;
+            double uniformityU = Math.Abs(muCorrected) > 1e-12
+                ? 1.0 - sigmaCorrected / muCorrected
+                : double.NaN;
+
+            imageGray.Dispose();
+            imageFloat.Dispose();
+            corrected.Dispose();
+            coatingMask.Dispose();
+
+            return new MaskUniformityResult
+            {
+                MuMaskRaw = muMaskRaw,
+                MuCorrected = muCorrected,
+                SigmaCorrected = sigmaCorrected,
+                UniformityU = uniformityU,
+                CoatingPixelCount = coatingPixelCount,
+                HeatmapPath = string.Empty
+            };
+        }
+
+        private static Mat BuildCoatingMask(OpenCvSharp.Size imageSize, string maskPath)
+        {
+            // 仅处理有mask版本
+            if (string.IsNullOrWhiteSpace(maskPath) || !File.Exists(maskPath))
+            {
+                throw new ArgumentException("mask文件不存在，当前版本仅支持有mask计算。");
+            }
+
+            Mat maskGray = Cv2.ImRead(maskPath, ImreadModes.Grayscale);
+            if (maskGray.Empty())
+            {
+                throw new ArgumentException($"mask读取失败: {maskPath}");
+            }
+
+            if (maskGray.Size() != imageSize)
+            {
+                throw new ArgumentException($"原图与mask尺寸不一致: image={imageSize}, mask={maskGray.Size()}");
+            }
+
+            // 业务规则：非纯黑色区域参与均匀性统计（黑色区域不参与）
+            Mat coatingMask = new Mat();
+            Cv2.Threshold(maskGray, coatingMask, 0, 255, ThresholdTypes.Binary);
+            maskGray.Dispose();
+            return coatingMask;
         }
 
         /// <summary>
