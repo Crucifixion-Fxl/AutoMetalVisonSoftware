@@ -35,50 +35,93 @@ namespace AutoMetal.Data
             {
                 SQLiteConnection.CreateFile(dbPath);
                 Console.WriteLine($"数据库已创建:{dbPath}");
-                
-                using (var connection = new SQLiteConnection(_connectionString))
-                {
-                    connection.Open();
-
-                    string createTableSql = @"
-                        CREATE TABLE IF NOT EXISTS Samples (
-                            SampleId TEXT PRIMARY KEY,
-                            Coverage REAL DEFAULT 0.0,
-                            OriginalImagePath TEXT,
-                            CroppedImagePath TEXT,
-                            Uniformity REAL DEFAULT 0.0,
-                            UniformityAnalysisImagePath TEXT,
-                            CoverageAnalysisImagePath TEXT,
-                            CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
-                        )";
-                    ExecuteNonQuery(createTableSql);
-
-                }
-
             }
+
+            string createTableSql = @"
+                CREATE TABLE IF NOT EXISTS Samples (
+                    SampleId TEXT PRIMARY KEY,
+                    SampleType TEXT,
+                    IterationNo INTEGER DEFAULT 0,
+                    BatchNo INTEGER DEFAULT 0,
+                    Coverage REAL DEFAULT 0.0,
+                    Uniformity REAL DEFAULT 0.0,
+                    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    OriImagePath TEXT,
+                    CroppedImagePath TEXT,
+                    HeatmapImagePath TEXT,
+                    MaskImagePath TEXT,
+                    OutputImagePath TEXT,
+                    StandardImagePath TEXT
+                )";
+            ExecuteNonQuery(createTableSql);
+            EnsureSchema();
+        }
+
+        private static void EnsureSchema()
+        {
+            EnsureColumnExists("SampleType", "TEXT");
+            EnsureColumnExists("IterationNo", "INTEGER DEFAULT 0");
+            EnsureColumnExists("BatchNo", "INTEGER DEFAULT 0");
+            EnsureColumnExists("Coverage", "REAL DEFAULT 0.0");
+            EnsureColumnExists("Uniformity", "REAL DEFAULT 0.0");
+            EnsureColumnExists("CreatedAt", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+            EnsureColumnExists("UpdatedAt", "DATETIME DEFAULT CURRENT_TIMESTAMP");
+            EnsureColumnExists("OriImagePath", "TEXT");
+            EnsureColumnExists("CroppedImagePath", "TEXT");
+            EnsureColumnExists("HeatmapImagePath", "TEXT");
+            EnsureColumnExists("MaskImagePath", "TEXT");
+            EnsureColumnExists("OutputImagePath", "TEXT");
+            EnsureColumnExists("StandardImagePath", "TEXT");
+        }
+
+        private static void EnsureColumnExists(string columnName, string columnTypeDefinition)
+        {
+            string checkSql = "PRAGMA table_info(Samples)";
+            using (var dt = ExecuteQuery(checkSql))
+            {
+                foreach (DataRow row in dt.Rows)
+                {
+                    var name = row["name"]?.ToString();
+                    if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                }
+            }
+
+            ExecuteNonQuery($"ALTER TABLE Samples ADD COLUMN {columnName} {columnTypeDefinition}");
         }
 
         public static void UpsertSample(SampleData sample)
         {
             string sql = @"
         INSERT OR REPLACE INTO Samples (
-            SampleId, Coverage, OriginalImagePath, CroppedImagePath, 
-            Uniformity, UniformityAnalysisImagePath, CoverageAnalysisImagePath
+            SampleId, SampleType, IterationNo, BatchNo, Coverage, Uniformity,
+            CreatedAt, UpdatedAt, OriImagePath, CroppedImagePath,
+            HeatmapImagePath, MaskImagePath, OutputImagePath, StandardImagePath
         ) VALUES (
-            @SampleId, @Coverage, @OriginalImagePath, @CroppedImagePath, 
-            @Uniformity, @UniformityAnalysisImagePath, @CoverageAnalysisImagePath
+            @SampleId, @SampleType, @IterationNo, @BatchNo, @Coverage, @Uniformity,
+            @CreatedAt, @UpdatedAt, @OriImagePath, @CroppedImagePath,
+            @HeatmapImagePath, @MaskImagePath, @OutputImagePath, @StandardImagePath
         )";
 
             var parameters = new[]
             {
                 new SQLiteParameter("@SampleId", sample.SampleId),
+                new SQLiteParameter("@SampleType", sample.SampleType ?? (object)DBNull.Value),
+                new SQLiteParameter("@IterationNo", sample.IterationNo),
+                new SQLiteParameter("@BatchNo", sample.BatchNo),
                 new SQLiteParameter("@Coverage", sample.Coverage),
-                new SQLiteParameter("@OriginalImagePath", sample.OriginalImagePath ?? (object)DBNull.Value),
-                new SQLiteParameter("@CroppedImagePath", sample.CroppedImagePath ?? (object)DBNull.Value),
                 new SQLiteParameter("@Uniformity", sample.Uniformity),
-                new SQLiteParameter("@UniformityAnalysisImagePath", sample.UniformityAnalysisImagePath ?? (object)DBNull.Value),
-                new SQLiteParameter("@CoverageAnalysisImagePath", sample.CoverageAnalysisImagePath ?? (object)DBNull.Value)
+                new SQLiteParameter("@CreatedAt", sample.CreatedAt == default(DateTime) ? DateTime.Now : sample.CreatedAt),
+                new SQLiteParameter("@UpdatedAt", sample.UpdatedAt == default(DateTime) ? DateTime.Now : sample.UpdatedAt),
+                new SQLiteParameter("@OriImagePath", sample.OriImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@CroppedImagePath", sample.CroppedImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@HeatmapImagePath", sample.HeatmapImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@MaskImagePath", sample.MaskImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@OutputImagePath", sample.OutputImagePath ?? (object)DBNull.Value),
+                new SQLiteParameter("@StandardImagePath", sample.StandardImagePath ?? (object)DBNull.Value)
             };
 
             ExecuteNonQuery(sql, parameters);
@@ -238,16 +281,60 @@ namespace AutoMetal.Data
         {
             return new SampleData
             {
-                SampleId = row["SampleId"].ToString(),
-                Coverage = Convert.ToDouble(row["Coverage"]),
-                OriginalImagePath = row["OriginalImagePath"] as string,
-                CroppedImagePath = row["CroppedImagePath"] as string,
-                Uniformity = Convert.ToDouble(row["Uniformity"]),
-                UniformityAnalysisImagePath = row["UniformityAnalysisImagePath"] as string,
-                CoverageAnalysisImagePath = row["CoverageAnalysisImagePath"] as string,
-                CreatedAt = Convert.ToDateTime(row["CreatedAt"]),
-                UpdatedAt = Convert.ToDateTime(row["UpdatedAt"])
+                SampleId = GetString(row, "SampleId"),
+                SampleType = GetString(row, "SampleType"),
+                IterationNo = GetInt(row, "IterationNo"),
+                BatchNo = GetInt(row, "BatchNo"),
+                Coverage = GetDouble(row, "Coverage"),
+                Uniformity = GetDouble(row, "Uniformity"),
+                CreatedAt = GetDateTime(row, "CreatedAt"),
+                UpdatedAt = GetDateTime(row, "UpdatedAt"),
+                OriImagePath = GetString(row, "OriImagePath", "OriginalImagePath"),
+                CroppedImagePath = GetString(row, "CroppedImagePath"),
+                HeatmapImagePath = GetString(row, "HeatmapImagePath", "UniformityAnalysisImagePath"),
+                MaskImagePath = GetString(row, "MaskImagePath", "CoverageAnalysisImagePath"),
+                OutputImagePath = GetString(row, "OutputImagePath"),
+                StandardImagePath = GetString(row, "StandardImagePath")
             };
+        }
+
+        private static string GetString(DataRow row, params string[] candidateNames)
+        {
+            foreach (var name in candidateNames)
+            {
+                if (row.Table.Columns.Contains(name) && row[name] != DBNull.Value)
+                {
+                    return row[name].ToString();
+                }
+            }
+            return string.Empty;
+        }
+
+        private static double GetDouble(DataRow row, string name)
+        {
+            if (!row.Table.Columns.Contains(name) || row[name] == DBNull.Value)
+            {
+                return 0.0;
+            }
+            return Convert.ToDouble(row[name]);
+        }
+
+        private static int GetInt(DataRow row, string name)
+        {
+            if (!row.Table.Columns.Contains(name) || row[name] == DBNull.Value)
+            {
+                return 0;
+            }
+            return Convert.ToInt32(row[name]);
+        }
+
+        private static DateTime GetDateTime(DataRow row, string name)
+        {
+            if (!row.Table.Columns.Contains(name) || row[name] == DBNull.Value)
+            {
+                return DateTime.MinValue;
+            }
+            return Convert.ToDateTime(row[name]);
         }
 
         public static List<SampleData> GetSamplesByDateAndBatch(DateTime targetDate, int batchId)
@@ -279,14 +366,24 @@ namespace AutoMetal.Data
         public class SampleData
         {
             public string SampleId { get; set; }
+            public string SampleType { get; set; }
+            public int IterationNo { get; set; }
+            public int BatchNo { get; set; }
             public double Coverage { get; set; } = 0.0;
-            public string OriginalImagePath { get; set; }
+            public string OriImagePath { get; set; }
             public string CroppedImagePath { get; set; }
             public double Uniformity { get; set; } = 0.0;
-            public string UniformityAnalysisImagePath { get; set; }
-            public string CoverageAnalysisImagePath { get; set; }
+            public string HeatmapImagePath { get; set; }
+            public string MaskImagePath { get; set; }
+            public string OutputImagePath { get; set; }
+            public string StandardImagePath { get; set; }
             public DateTime CreatedAt { get; set; }
             public DateTime UpdatedAt { get; set; }
+
+            // 向后兼容旧字段命名（已有调用无需立即改动）
+            public string OriginalImagePath { get => OriImagePath; set => OriImagePath = value; }
+            public string UniformityAnalysisImagePath { get => HeatmapImagePath; set => HeatmapImagePath = value; }
+            public string CoverageAnalysisImagePath { get => MaskImagePath; set => MaskImagePath = value; }
         }
 
     }

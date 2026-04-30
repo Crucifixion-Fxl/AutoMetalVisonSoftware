@@ -127,7 +127,6 @@ namespace AutoMetal
             this.radioButton2 = new System.Windows.Forms.RadioButton();
             this.radioButton1 = new System.Windows.Forms.RadioButton();
             this.runtimeLabel = new System.Windows.Forms.Label();
-            this.checkBox1 = new System.Windows.Forms.CheckBox();
             this.btnCloseServer = new System.Windows.Forms.Button();
             this.btnStartServer = new System.Windows.Forms.Button();
             this.label25 = new System.Windows.Forms.Label();
@@ -141,8 +140,6 @@ namespace AutoMetal
             this.textBox5 = new System.Windows.Forms.TextBox();
             this.abnormalArea = new System.Windows.Forms.TextBox();
             this.normalArea = new System.Windows.Forms.TextBox();
-            this.textEdfStep = new System.Windows.Forms.TextBox();
-            this.textEdfRange = new System.Windows.Forms.TextBox();
             this.textY1 = new System.Windows.Forms.TextBox();
             this.textX1 = new System.Windows.Forms.TextBox();
             this.textY0 = new System.Windows.Forms.TextBox();
@@ -164,8 +161,6 @@ namespace AutoMetal
             this.label18 = new System.Windows.Forms.Label();
             this.label16 = new System.Windows.Forms.Label();
             this.label_coverageRate = new System.Windows.Forms.Label();
-            this.label_edf = new System.Windows.Forms.Label();
-            this.snap = new System.Windows.Forms.Button();
             this.label4 = new System.Windows.Forms.Label();
             this.label3 = new System.Windows.Forms.Label();
             this.outputPicBox = new System.Windows.Forms.PictureBox();
@@ -289,7 +284,7 @@ namespace AutoMetal
             // setingsToolStripMenuItem
             // 
             this.setingsToolStripMenuItem.Name = "setingsToolStripMenuItem";
-            this.setingsToolStripMenuItem.Size = new System.Drawing.Size(66, 22);
+            this.setingsToolStripMenuItem.Size = new System.Drawing.Size(44, 22);
             this.setingsToolStripMenuItem.Text = "设置";
             // 
             // notifyIcon1
@@ -433,7 +428,7 @@ namespace AutoMetal
             this.labelAlgMaskDir.AutoSize = true;
             this.labelAlgMaskDir.Location = new System.Drawing.Point(12, 56);
             this.labelAlgMaskDir.Name = "labelAlgMaskDir";
-            this.labelAlgMaskDir.Size = new System.Drawing.Size(59, 12);
+            this.labelAlgMaskDir.Size = new System.Drawing.Size(65, 12);
             this.labelAlgMaskDir.TabIndex = 2;
             this.labelAlgMaskDir.Text = "掩膜来源：";
             // 
@@ -1211,7 +1206,6 @@ namespace AutoMetal
             this.tabPage1.BackColor = System.Drawing.Color.WhiteSmoke;
             this.tabPage1.Controls.Add(this.运行模式);
             this.tabPage1.Controls.Add(this.runtimeLabel);
-            this.tabPage1.Controls.Add(this.checkBox1);
             this.tabPage1.Controls.Add(this.btnCloseServer);
             this.tabPage1.Controls.Add(this.btnStartServer);
             this.tabPage1.Controls.Add(this.label25);
@@ -1225,8 +1219,6 @@ namespace AutoMetal
             this.tabPage1.Controls.Add(this.textBox5);
             this.tabPage1.Controls.Add(this.abnormalArea);
             this.tabPage1.Controls.Add(this.normalArea);
-            this.tabPage1.Controls.Add(this.textEdfStep);
-            this.tabPage1.Controls.Add(this.textEdfRange);
             this.tabPage1.Controls.Add(this.textY1);
             this.tabPage1.Controls.Add(this.textX1);
             this.tabPage1.Controls.Add(this.textY0);
@@ -1248,8 +1240,6 @@ namespace AutoMetal
             this.tabPage1.Controls.Add(this.label18);
             this.tabPage1.Controls.Add(this.label16);
             this.tabPage1.Controls.Add(this.label_coverageRate);
-            this.tabPage1.Controls.Add(this.label_edf);
-            this.tabPage1.Controls.Add(this.snap);
             this.tabPage1.Controls.Add(this.label4);
             this.tabPage1.Controls.Add(this.label3);
             this.tabPage1.Controls.Add(this.outputPicBox);
@@ -1326,17 +1316,6 @@ namespace AutoMetal
             this.runtimeLabel.Name = "runtimeLabel";
             this.runtimeLabel.Size = new System.Drawing.Size(0, 14);
             this.runtimeLabel.TabIndex = 142;
-            // 
-            // checkBox1
-            // 
-            this.checkBox1.AutoSize = true;
-            this.checkBox1.Location = new System.Drawing.Point(931, 57);
-            this.checkBox1.Margin = new System.Windows.Forms.Padding(1);
-            this.checkBox1.Name = "checkBox1";
-            this.checkBox1.Size = new System.Drawing.Size(82, 18);
-            this.checkBox1.TabIndex = 141;
-            this.checkBox1.Text = "键盘控制";
-            this.checkBox1.UseVisualStyleBackColor = true;
             // 
             // btnCloseServer
             // 
@@ -1461,55 +1440,37 @@ namespace AutoMetal
             this.normalArea.Size = new System.Drawing.Size(156, 23);
             this.normalArea.TabIndex = 122;
             // 
-            // textEdfStep
-            // 
-            this.textEdfStep.Location = new System.Drawing.Point(181, 185);
-            this.textEdfStep.Name = "textEdfStep";
-            this.textEdfStep.Size = new System.Drawing.Size(37, 23);
-            this.textEdfStep.TabIndex = 118;
-            this.textEdfStep.Text = "10";
-            this.textEdfStep.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
-            // 
-            // textEdfRange
-            // 
-            this.textEdfRange.Location = new System.Drawing.Point(128, 185);
-            this.textEdfRange.Name = "textEdfRange";
-            this.textEdfRange.Size = new System.Drawing.Size(37, 23);
-            this.textEdfRange.TabIndex = 117;
-            this.textEdfRange.Text = "20";
-            this.textEdfRange.TextAlign = System.Windows.Forms.HorizontalAlignment.Center;
-            // 
             // textY1
             // 
-            this.textY1.Location = new System.Drawing.Point(192, 237);
+            this.textY1.Location = new System.Drawing.Point(192, 254);
             this.textY1.Name = "textY1";
             this.textY1.Size = new System.Drawing.Size(66, 23);
             this.textY1.TabIndex = 103;
             // 
             // textX1
             // 
-            this.textX1.Location = new System.Drawing.Point(103, 237);
+            this.textX1.Location = new System.Drawing.Point(99, 254);
             this.textX1.Name = "textX1";
             this.textX1.Size = new System.Drawing.Size(66, 23);
             this.textX1.TabIndex = 104;
             // 
             // textY0
             // 
-            this.textY0.Location = new System.Drawing.Point(192, 211);
+            this.textY0.Location = new System.Drawing.Point(193, 224);
             this.textY0.Name = "textY0";
             this.textY0.Size = new System.Drawing.Size(66, 23);
             this.textY0.TabIndex = 105;
             // 
             // textX0
             // 
-            this.textX0.Location = new System.Drawing.Point(103, 211);
+            this.textX0.Location = new System.Drawing.Point(101, 225);
             this.textX0.Name = "textX0";
             this.textX0.Size = new System.Drawing.Size(66, 23);
             this.textX0.TabIndex = 106;
             // 
             // textFocus
             // 
-            this.textFocus.Location = new System.Drawing.Point(103, 153);
+            this.textFocus.Location = new System.Drawing.Point(103, 191);
             this.textFocus.Margin = new System.Windows.Forms.Padding(2);
             this.textFocus.Name = "textFocus";
             this.textFocus.Size = new System.Drawing.Size(155, 23);
@@ -1518,35 +1479,35 @@ namespace AutoMetal
             // 
             // textZ
             // 
-            this.textZ.Location = new System.Drawing.Point(103, 127);
+            this.textZ.Location = new System.Drawing.Point(103, 149);
             this.textZ.Name = "textZ";
             this.textZ.Size = new System.Drawing.Size(155, 23);
             this.textZ.TabIndex = 92;
             // 
             // textXY2
             // 
-            this.textXY2.Location = new System.Drawing.Point(192, 95);
+            this.textXY2.Location = new System.Drawing.Point(193, 112);
             this.textXY2.Name = "textXY2";
             this.textXY2.Size = new System.Drawing.Size(66, 23);
             this.textXY2.TabIndex = 93;
             // 
             // textXY1
             // 
-            this.textXY1.Location = new System.Drawing.Point(103, 95);
+            this.textXY1.Location = new System.Drawing.Point(101, 112);
             this.textXY1.Name = "textXY1";
             this.textXY1.Size = new System.Drawing.Size(66, 23);
             this.textXY1.TabIndex = 94;
             // 
             // textContrast
             // 
-            this.textContrast.Location = new System.Drawing.Point(103, 71);
+            this.textContrast.Location = new System.Drawing.Point(101, 78);
             this.textContrast.Name = "textContrast";
             this.textContrast.Size = new System.Drawing.Size(155, 23);
             this.textContrast.TabIndex = 85;
             // 
             // textBrightness
             // 
-            this.textBrightness.Location = new System.Drawing.Point(103, 41);
+            this.textBrightness.Location = new System.Drawing.Point(104, 44);
             this.textBrightness.Name = "textBrightness";
             this.textBrightness.Size = new System.Drawing.Size(155, 23);
             this.textBrightness.TabIndex = 86;
@@ -1590,7 +1551,7 @@ namespace AutoMetal
             this.label_exp_id.AutoSize = true;
             this.label_exp_id.Location = new System.Drawing.Point(755, 135);
             this.label_exp_id.Name = "label_exp_id";
-            this.label_exp_id.Size = new System.Drawing.Size(63, 14);
+            this.label_exp_id.Size = new System.Drawing.Size(77, 14);
             this.label_exp_id.TabIndex = 130;
             this.label_exp_id.Text = "实验编号：";
             // 
@@ -1651,25 +1612,6 @@ namespace AutoMetal
             this.label_coverageRate.TabIndex = 119;
             this.label_coverageRate.Text = "镀膜覆盖率：";
             // 
-            // label_edf
-            // 
-            this.label_edf.AutoSize = true;
-            this.label_edf.Location = new System.Drawing.Point(17, 189);
-            this.label_edf.Name = "label_edf";
-            this.label_edf.Size = new System.Drawing.Size(105, 14);
-            this.label_edf.TabIndex = 116;
-            this.label_edf.Text = "景深合成范围/步长";
-            // 
-            // snap
-            // 
-            this.snap.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.snap.Location = new System.Drawing.Point(17, 261);
-            this.snap.Name = "snap";
-            this.snap.Size = new System.Drawing.Size(345, 22);
-            this.snap.TabIndex = 113;
-            this.snap.Text = "获取单张图像";
-            this.snap.UseVisualStyleBackColor = true;
-            // 
             // label4
             // 
             this.label4.AutoSize = true;
@@ -1715,7 +1657,7 @@ namespace AutoMetal
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(159, 463);
+            this.label2.Location = new System.Drawing.Point(153, 514);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(49, 14);
             this.label2.TabIndex = 108;
@@ -1727,13 +1669,13 @@ namespace AutoMetal
             this.listBoxInfo.ItemHeight = 14;
             this.listBoxInfo.Location = new System.Drawing.Point(17, 289);
             this.listBoxInfo.Name = "listBoxInfo";
-            this.listBoxInfo.Size = new System.Drawing.Size(346, 172);
+            this.listBoxInfo.Size = new System.Drawing.Size(374, 214);
             this.listBoxInfo.TabIndex = 107;
             // 
             // label11
             // 
             this.label11.AutoSize = true;
-            this.label11.Location = new System.Drawing.Point(173, 241);
+            this.label11.Location = new System.Drawing.Point(171, 263);
             this.label11.Name = "label11";
             this.label11.Size = new System.Drawing.Size(14, 14);
             this.label11.TabIndex = 99;
@@ -1742,7 +1684,7 @@ namespace AutoMetal
             // label10
             // 
             this.label10.AutoSize = true;
-            this.label10.Location = new System.Drawing.Point(173, 215);
+            this.label10.Location = new System.Drawing.Point(173, 228);
             this.label10.Name = "label10";
             this.label10.Size = new System.Drawing.Size(14, 14);
             this.label10.TabIndex = 100;
@@ -1751,27 +1693,27 @@ namespace AutoMetal
             // labelx_x1_y1
             // 
             this.labelx_x1_y1.AutoSize = true;
-            this.labelx_x1_y1.Location = new System.Drawing.Point(24, 241);
+            this.labelx_x1_y1.Location = new System.Drawing.Point(24, 257);
             this.labelx_x1_y1.Name = "labelx_x1_y1";
-            this.labelx_x1_y1.Size = new System.Drawing.Size(42, 14);
+            this.labelx_x1_y1.Size = new System.Drawing.Size(63, 14);
             this.labelx_x1_y1.TabIndex = 101;
             this.labelx_x1_y1.Text = "终点坐标";
             // 
             // label_x0_y0
             // 
             this.label_x0_y0.AutoSize = true;
-            this.label_x0_y0.Location = new System.Drawing.Point(24, 215);
+            this.label_x0_y0.Location = new System.Drawing.Point(24, 227);
             this.label_x0_y0.Name = "label_x0_y0";
-            this.label_x0_y0.Size = new System.Drawing.Size(42, 14);
+            this.label_x0_y0.Size = new System.Drawing.Size(63, 14);
             this.label_x0_y0.TabIndex = 102;
             this.label_x0_y0.Text = "起点坐标";
             // 
             // btnAutoScan
             // 
             this.btnAutoScan.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnAutoScan.Location = new System.Drawing.Point(264, 211);
+            this.btnAutoScan.Location = new System.Drawing.Point(264, 224);
             this.btnAutoScan.Name = "btnAutoScan";
-            this.btnAutoScan.Size = new System.Drawing.Size(98, 44);
+            this.btnAutoScan.Size = new System.Drawing.Size(113, 58);
             this.btnAutoScan.TabIndex = 98;
             this.btnAutoScan.Text = "自动扫描";
             this.btnAutoScan.UseVisualStyleBackColor = true;
@@ -1780,9 +1722,9 @@ namespace AutoMetal
             // btnAutoFocus
             // 
             this.btnAutoFocus.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnAutoFocus.Location = new System.Drawing.Point(264, 153);
+            this.btnAutoFocus.Location = new System.Drawing.Point(264, 186);
             this.btnAutoFocus.Name = "btnAutoFocus";
-            this.btnAutoFocus.Size = new System.Drawing.Size(98, 22);
+            this.btnAutoFocus.Size = new System.Drawing.Size(113, 30);
             this.btnAutoFocus.TabIndex = 96;
             this.btnAutoFocus.Text = "自动对焦";
             this.btnAutoFocus.UseVisualStyleBackColor = true;
@@ -1791,25 +1733,25 @@ namespace AutoMetal
             // label_focus
             // 
             this.label_focus.AutoSize = true;
-            this.label_focus.Location = new System.Drawing.Point(24, 153);
+            this.label_focus.Location = new System.Drawing.Point(24, 194);
             this.label_focus.Name = "label_focus";
-            this.label_focus.Size = new System.Drawing.Size(91, 14);
+            this.label_focus.Size = new System.Drawing.Size(77, 14);
             this.label_focus.TabIndex = 95;
             this.label_focus.Text = "对焦范围：";
             // 
             // label7_z
             // 
             this.label7_z.AutoSize = true;
-            this.label7_z.Location = new System.Drawing.Point(24, 131);
+            this.label7_z.Location = new System.Drawing.Point(24, 158);
             this.label7_z.Name = "label7_z";
-            this.label7_z.Size = new System.Drawing.Size(21, 14);
+            this.label7_z.Size = new System.Drawing.Size(63, 14);
             this.label7_z.TabIndex = 89;
             this.label7_z.Text = "纵向轴：";
             // 
             // label9
             // 
             this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(173, 101);
+            this.label9.Location = new System.Drawing.Point(173, 117);
             this.label9.Name = "label9";
             this.label9.Size = new System.Drawing.Size(14, 14);
             this.label9.TabIndex = 90;
@@ -1818,18 +1760,18 @@ namespace AutoMetal
             // label_xy
             // 
             this.label_xy.AutoSize = true;
-            this.label_xy.Location = new System.Drawing.Point(24, 103);
+            this.label_xy.Location = new System.Drawing.Point(24, 115);
             this.label_xy.Name = "label_xy";
-            this.label_xy.Size = new System.Drawing.Size(28, 14);
+            this.label_xy.Size = new System.Drawing.Size(63, 14);
             this.label_xy.TabIndex = 91;
             this.label_xy.Text = "平面轴：";
             // 
             // btnSetZ
             // 
             this.btnSetZ.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnSetZ.Location = new System.Drawing.Point(264, 125);
+            this.btnSetZ.Location = new System.Drawing.Point(264, 150);
             this.btnSetZ.Name = "btnSetZ";
-            this.btnSetZ.Size = new System.Drawing.Size(98, 22);
+            this.btnSetZ.Size = new System.Drawing.Size(113, 30);
             this.btnSetZ.TabIndex = 87;
             this.btnSetZ.Text = "设置纵向轴";
             this.btnSetZ.UseVisualStyleBackColor = true;
@@ -1838,9 +1780,9 @@ namespace AutoMetal
             // btnSetXY
             // 
             this.btnSetXY.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.btnSetXY.Location = new System.Drawing.Point(264, 95);
+            this.btnSetXY.Location = new System.Drawing.Point(264, 112);
             this.btnSetXY.Name = "btnSetXY";
-            this.btnSetXY.Size = new System.Drawing.Size(98, 22);
+            this.btnSetXY.Size = new System.Drawing.Size(113, 31);
             this.btnSetXY.TabIndex = 88;
             this.btnSetXY.Text = "设置平面轴";
             this.btnSetXY.UseVisualStyleBackColor = true;
@@ -1849,9 +1791,9 @@ namespace AutoMetal
             // label_contrast
             // 
             this.label_contrast.AutoSize = true;
-            this.label_contrast.Location = new System.Drawing.Point(24, 77);
+            this.label_contrast.Location = new System.Drawing.Point(24, 81);
             this.label_contrast.Name = "label_contrast";
-            this.label_contrast.Size = new System.Drawing.Size(70, 14);
+            this.label_contrast.Size = new System.Drawing.Size(63, 14);
             this.label_contrast.TabIndex = 83;
             this.label_contrast.Text = "对比度：";
             // 
@@ -1860,7 +1802,7 @@ namespace AutoMetal
             this.label_brightness.AutoSize = true;
             this.label_brightness.Location = new System.Drawing.Point(24, 47);
             this.label_brightness.Name = "label_brightness";
-            this.label_brightness.Size = new System.Drawing.Size(84, 14);
+            this.label_brightness.Size = new System.Drawing.Size(49, 14);
             this.label_brightness.TabIndex = 84;
             this.label_brightness.Text = "亮度：";
             // 
@@ -1869,7 +1811,7 @@ namespace AutoMetal
             this.btnSetContrast.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSetContrast.Location = new System.Drawing.Point(264, 71);
             this.btnSetContrast.Name = "btnSetContrast";
-            this.btnSetContrast.Size = new System.Drawing.Size(98, 22);
+            this.btnSetContrast.Size = new System.Drawing.Size(113, 35);
             this.btnSetContrast.TabIndex = 81;
             this.btnSetContrast.Text = "设置对比度";
             this.btnSetContrast.UseVisualStyleBackColor = true;
@@ -1880,7 +1822,7 @@ namespace AutoMetal
             this.btnSetBrightness.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnSetBrightness.Location = new System.Drawing.Point(264, 41);
             this.btnSetBrightness.Name = "btnSetBrightness";
-            this.btnSetBrightness.Size = new System.Drawing.Size(98, 22);
+            this.btnSetBrightness.Size = new System.Drawing.Size(113, 27);
             this.btnSetBrightness.TabIndex = 82;
             this.btnSetBrightness.Text = "设置亮度";
             this.btnSetBrightness.UseVisualStyleBackColor = true;
@@ -1909,7 +1851,7 @@ namespace AutoMetal
             this.btnConnect.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnConnect.Location = new System.Drawing.Point(264, 7);
             this.btnConnect.Name = "btnConnect";
-            this.btnConnect.Size = new System.Drawing.Size(98, 23);
+            this.btnConnect.Size = new System.Drawing.Size(113, 28);
             this.btnConnect.TabIndex = 76;
             this.btnConnect.Text = "连接";
             this.btnConnect.UseVisualStyleBackColor = true;
@@ -1919,11 +1861,11 @@ namespace AutoMetal
             // 
             this.自动化.Alignment = System.Windows.Forms.TabAlignment.Left;
             this.自动化.Controls.Add(this.tabPage1);
-            this.自动化.Controls.Add(this.tabPage2);
-            this.自动化.Controls.Add(this.tabPage3);
-            this.自动化.Controls.Add(this.tabPage4);
             this.自动化.Controls.Add(this.tabPage9);
+            this.自动化.Controls.Add(this.tabPage2);
+            this.自动化.Controls.Add(this.tabPage4);
             this.自动化.Controls.Add(this.tabPage5);
+            this.自动化.Controls.Add(this.tabPage3);
             this.自动化.Font = new System.Drawing.Font("宋体", 9F);
             this.自动化.Location = new System.Drawing.Point(9, 34);
             this.自动化.Margin = new System.Windows.Forms.Padding(1);
@@ -2109,7 +2051,7 @@ namespace AutoMetal
             this.labelTensorEnginePath.AutoSize = true;
             this.labelTensorEnginePath.Location = new System.Drawing.Point(16, 74);
             this.labelTensorEnginePath.Name = "labelTensorEnginePath";
-            this.labelTensorEnginePath.Size = new System.Drawing.Size(65, 12);
+            this.labelTensorEnginePath.Size = new System.Drawing.Size(77, 12);
             this.labelTensorEnginePath.TabIndex = 4;
             this.labelTensorEnginePath.Text = "推理引擎文件";
             // 
@@ -2192,7 +2134,7 @@ namespace AutoMetal
             this.labelBatchSize.AutoSize = true;
             this.labelBatchSize.Location = new System.Drawing.Point(224, 36);
             this.labelBatchSize.Name = "labelBatchSize";
-            this.labelBatchSize.Size = new System.Drawing.Size(59, 12);
+            this.labelBatchSize.Size = new System.Drawing.Size(41, 12);
             this.labelBatchSize.TabIndex = 2;
             this.labelBatchSize.Text = "批大小";
             // 
@@ -2209,7 +2151,7 @@ namespace AutoMetal
             this.labelEpoch.AutoSize = true;
             this.labelEpoch.Location = new System.Drawing.Point(16, 36);
             this.labelEpoch.Name = "labelEpoch";
-            this.labelEpoch.Size = new System.Drawing.Size(35, 12);
+            this.labelEpoch.Size = new System.Drawing.Size(53, 12);
             this.labelEpoch.TabIndex = 0;
             this.labelEpoch.Text = "训练轮次";
             // 
@@ -2368,7 +2310,6 @@ namespace AutoMetal
         private System.Windows.Forms.RadioButton radioButton2;
         private System.Windows.Forms.RadioButton radioButton1;
         private System.Windows.Forms.Label runtimeLabel;
-        private System.Windows.Forms.CheckBox checkBox1;
         private System.Windows.Forms.Button btnCloseServer;
         private System.Windows.Forms.Button btnStartServer;
         private System.Windows.Forms.Label label25;
@@ -2382,8 +2323,6 @@ namespace AutoMetal
         private System.Windows.Forms.TextBox textBox5;
         private System.Windows.Forms.TextBox abnormalArea;
         private System.Windows.Forms.TextBox normalArea;
-        private System.Windows.Forms.TextBox textEdfStep;
-        private System.Windows.Forms.TextBox textEdfRange;
         private System.Windows.Forms.TextBox textY1;
         private System.Windows.Forms.TextBox textX1;
         private System.Windows.Forms.TextBox textY0;
@@ -2405,8 +2344,6 @@ namespace AutoMetal
         private System.Windows.Forms.Label label18;
         private System.Windows.Forms.Label label16;
         private System.Windows.Forms.Label label_coverageRate;
-        private System.Windows.Forms.Label label_edf;
-        private System.Windows.Forms.Button snap;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.PictureBox outputPicBox;

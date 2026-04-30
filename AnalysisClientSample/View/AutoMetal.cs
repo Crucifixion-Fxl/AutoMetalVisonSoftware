@@ -60,12 +60,6 @@ namespace AutoMetal
         private volatile bool is_steaming = false;
         private CancellationTokenSource _cancellationTokenSource;
 
-        // 键盘控制开关
-        private bool isKeyboardControlEnabled = false;
-        private float moveStep = 1.0f; // 移动步长
-
-        // CheckBox控件引用（假设名为checkBoxKeyboardControl）
-        private CheckBox checkBoxKeyboardControl;
 
         // 可重用的图像缓冲区，避免重复分配内存
         private byte[] reusableImageBuffer = null;
@@ -176,9 +170,6 @@ namespace AutoMetal
             // 初始化样品数据库
             SampleDBHelper.Initialize(AutoMetalConstants.dbPath);
 
-            // 初始化键盘控制CheckBox监听
-            InitializeKeyboardControlCheckBox();
-
             // 默认选择正常模式
             radioButton1.Checked = true;
 
@@ -188,6 +179,7 @@ namespace AutoMetal
             // 初始化算法处理页签交互
             InitializeAlgorithmTabHandlers();
             InitializeTrainingTabHandlers();
+            InitializeDatabaseTabHandlers();
             InitializeIndustrialVisualTheme();
             InitializeDatabaseTabIndustrialStyle();
 
@@ -292,6 +284,13 @@ namespace AutoMetal
             dataGridView1.DefaultCellStyle.ForeColor = Color.FromArgb(33, 43, 54);
             dataGridView1.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dataGridView1.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
+        }
+
+        private void InitializeDatabaseTabHandlers()
+        {
+            dataGridView1.CellDoubleClick -= dataGridView1_CellDoubleClick;
+            dataGridView1.CellDoubleClick += dataGridView1_CellDoubleClick;
+            LoadAllDatabaseRows();
         }
 
         private static void ApplyIndustrialButtonStyle(Button button, bool emphasized)
@@ -799,34 +798,6 @@ namespace AutoMetal
             }
         }
 
-        // 初始化键盘控制CheckBox
-        private void InitializeKeyboardControlCheckBox()
-        {
-            // 查找名为checkBoxKeyboardControl的CheckBox控件
-            // 如果您的CheckBox名称不同，请修改这里的名称
-            checkBoxKeyboardControl = this.Controls.Find("checkBoxKeyboardControl", true).FirstOrDefault() as CheckBox;
-
-            if (checkBoxKeyboardControl != null)
-            {
-                // 订阅CheckBox状态变化事件
-                checkBoxKeyboardControl.CheckedChanged += OnKeyboardControlCheckBoxChanged;
-                SafeAppendLog("键盘控制CheckBox已初始化");
-            }
-            else
-            {
-                SafeAppendLog("警告: 未找到键盘控制CheckBox控件");
-            }
-        }
-
-        // CheckBox状态变化事件处理
-        private void OnKeyboardControlCheckBoxChanged(object sender, EventArgs e)
-        {
-            if (checkBoxKeyboardControl != null)
-            {
-                EnableKeyboardControl(checkBoxKeyboardControl.Checked);
-            }
-        }
-
         private void OnFormClosed(object sender, FormClosedEventArgs e)
         {
             Console.WriteLine("程序结束，显微镜复位");
@@ -843,109 +814,6 @@ namespace AutoMetal
 
         }
 
-        // 键盘控制相关方法
-        private void EnableKeyboardControl(bool enable)
-        {
-            isKeyboardControlEnabled = enable;
-
-            // 同步更新CheckBox状态（避免循环触发事件）
-            if (checkBoxKeyboardControl != null && checkBoxKeyboardControl.Checked != enable)
-            {
-                checkBoxKeyboardControl.CheckedChanged -= OnKeyboardControlCheckBoxChanged; // 临时取消事件监听
-                checkBoxKeyboardControl.Checked = enable;
-                checkBoxKeyboardControl.CheckedChanged += OnKeyboardControlCheckBoxChanged; // 重新添加事件监听
-            }
-
-            if (enable)
-            {
-                this.KeyPreview = true; // 启用键盘预览
-                this.KeyDown += OnKeyDown; // 订阅键盘按下事件
-                SafeAppendLog("键盘控制已启用 - 使用方向键控制移动，R键复位到原点");
-            }
-            else
-            {
-                this.KeyPreview = false; // 禁用键盘预览
-                this.KeyDown -= OnKeyDown; // 取消订阅键盘按下事件
-                SafeAppendLog("键盘控制已禁用");
-            }
-        }
-
-        private void OnKeyDown(object sender, KeyEventArgs e)
-        {
-            if (!isKeyboardControlEnabled || m_analysis == null)
-                return;
-
-            int id;
-            float currentX, currentY;
-
-            // 获取当前位置
-            m_analysis.getXY(out currentX, out currentY);
-
-            switch (e.KeyCode)
-            {
-                case Keys.Up:
-                    // 向上移动
-                    m_analysis.setXY(out id, currentX, currentY + moveStep);
-                    SafeAppendLog($"向上移动: ({currentX:F2}, {currentY + moveStep:F2})");
-                    // 移动后调用snap_Click函数
-                    snap_Click(sender, e);
-                    break;
-
-                case Keys.Down:
-                    // 向下移动
-                    m_analysis.setXY(out id, currentX, currentY - moveStep);
-                    SafeAppendLog($"向下移动: ({currentX:F2}, {currentY - moveStep:F2})");
-                    // 移动后调用snap_Click函数
-                    snap_Click(sender, e);
-                    break;
-
-                case Keys.Left:
-                    // 向左移动
-                    m_analysis.setXY(out id, currentX - moveStep, currentY);
-                    SafeAppendLog($"向左移动: ({currentX - moveStep:F2}, {currentY:F2})");
-                    // 移动后调用snap_Click函数
-                    snap_Click(sender, e);
-                    break;
-
-                case Keys.Right:
-                    // 向右移动
-                    m_analysis.setXY(out id, currentX + moveStep, currentY);
-                    SafeAppendLog($"向右移动: ({currentX + moveStep:F2}, {currentY:F2})");
-                    // 移动后调用snap_Click函数
-                    snap_Click(sender, e);
-                    break;
-
-                case Keys.R:
-                    // 复位到原点
-                    m_analysis.setXY(out id, 0, 0);
-                    SafeAppendLog("复位到原点: (0, 0)");
-                    // 复位后调用snap_Click函数
-                    snap_Click(sender, e);
-                    break;
-            }
-
-            e.Handled = true; // 标记事件已处理
-        }
-
-        // 设置移动步长
-        public void SetMoveStep(float step)
-        {
-            if (step > 0)
-            {
-                moveStep = step;
-                SafeAppendLog($"移动步长设置为: {step:F2}");
-            }
-            else
-            {
-                SafeAppendLog("移动步长必须大于0");
-            }
-        }
-
-        // 获取当前键盘控制状态
-        public bool IsKeyboardControlEnabled()
-        {
-            return isKeyboardControlEnabled;
-        }
 
         private bool Connect(string strIP, int port)
         {
@@ -1879,7 +1747,7 @@ namespace AutoMetal
             }
         }
 
-        private void btnAlgRun_Click(object sender, EventArgs e)
+        private async void btnAlgRun_Click(object sender, EventArgs e)
         {
             // 步骤三固定按已加载的全部目录(1~10)执行，不受当前树选中节点限制
             var runImages = GetAllLoadedImages();
@@ -1888,39 +1756,73 @@ namespace AutoMetal
                 return;
             }
 
-            var batchResponse = _algorithmBatchService.Execute(new AlgorithmBatchRequest
+            if (AreAllAlgorithmOutputsReady(runImages))
             {
-                RunImages = runImages,
-                ManualMode = radioAlgManualMode.Checked,
-                ManualMasks = listBoxAlgMasks.Items.Cast<string>().ToList(),
-                GetBatchName = GetBatchNameFromImagePath,
-                GetOutputPaths = GetOutputImagePathsBySource,
-                TryPreprocess = imagePath => TryPreprocessAndSaveOutputs(imagePath, updatePreview: false, out _),
-                GetCoverageFromManualMask = (croppedPath, matchedMaskPath, targetMaskPath, targetOutputPath) =>
+                var confirmOverwrite = MessageBox.Show(
+                    "检测到当前目录下所有样品的分析结果已存在。\n是否重新分析并覆盖已有结果？",
+                    "结果已存在",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+                if (confirmOverwrite != DialogResult.Yes)
                 {
-                    double coverage = GenerateCoverageFromManualMask(
-                        croppedPath,
-                        matchedMaskPath,
-                        targetMaskPath,
-                        targetOutputPath,
-                        out string maskCoveragePath);
-                    return (coverage, maskCoveragePath);
-                },
-                GetCoverageAutoMask = (croppedPath, targetMaskPath, targetOutputPath) =>
+                    SafeAppendLog("用户取消重新分析，保留已有结果。");
+                    return;
+                }
+            }
+
+            btnAlgRun.Enabled = false;
+            btnAlgRun.Text = "处理中...";
+            Cursor = Cursors.WaitCursor;
+
+            AlgorithmBatchResponse batchResponse;
+            try
+            {
+                batchResponse = await Task.Run(() => _algorithmBatchService.Execute(new AlgorithmBatchRequest
                 {
-                    double coverage = CoverageAnalyzer.detectImage(croppedPath, targetMaskPath, targetOutputPath);
-                    return (coverage, targetMaskPath);
-                },
-                CalculateUniformity = (croppedPath, maskCoveragePath) =>
-                    ImageUniformityCalculator.CalculateUniformity(
-                        croppedPath,
-                        maskCoveragePath,
-                        gaussianKsize: 101,
-                        gaussianSigma: 0.0,
-                        applyIlluminationCorrection: false),
-                GenerateHeatmap = (croppedPath, maskCoveragePath, heatmapPath, invertMask) =>
-                    TryGenerateUniformityHeatmapByPython(croppedPath, maskCoveragePath, heatmapPath, invertMask)
-            });
+                    RunImages = runImages,
+                    ManualMode = radioAlgManualMode.Checked,
+                    ManualMasks = listBoxAlgMasks.Items.Cast<string>().ToList(),
+                    GetBatchName = GetBatchNameFromImagePath,
+                    GetOutputPaths = GetOutputImagePathsBySource,
+                    TryPreprocess = imagePath => TryPreprocessAndSaveOutputs(imagePath, updatePreview: false, out _),
+                    GetCoverageFromManualMask = (croppedPath, matchedMaskPath, targetMaskPath, targetOutputPath) =>
+                    {
+                        double coverage = GenerateCoverageFromManualMask(
+                            croppedPath,
+                            matchedMaskPath,
+                            targetMaskPath,
+                            targetOutputPath,
+                            out string maskCoveragePath);
+                        return (coverage, maskCoveragePath);
+                    },
+                    GetCoverageAutoMask = (croppedPath, targetMaskPath, targetOutputPath) =>
+                    {
+                        double coverage = CoverageAnalyzer.detectImage(croppedPath, targetMaskPath, targetOutputPath);
+                        return (coverage, targetMaskPath);
+                    },
+                    CalculateUniformity = (croppedPath, maskCoveragePath) =>
+                        ImageUniformityCalculator.CalculateUniformity(
+                            croppedPath,
+                            maskCoveragePath,
+                            gaussianKsize: 101,
+                            gaussianSigma: 0.0,
+                            applyIlluminationCorrection: false),
+                    GenerateHeatmap = (croppedPath, maskCoveragePath, heatmapPath, invertMask) =>
+                        TryGenerateUniformityHeatmapByPython(croppedPath, maskCoveragePath, heatmapPath, invertMask)
+                }));
+            }
+            catch (Exception ex)
+            {
+                SafeShowWarning($"算法处理失败：{ex.Message}");
+                return;
+            }
+            finally
+            {
+                btnAlgRun.Enabled = true;
+                btnAlgRun.Text = "开始处理并计算";
+                Cursor = Cursors.Default;
+            }
+
             var batchResults = batchResponse.BatchResults;
 
             if (radioAlgAutoMode.Checked)
@@ -1939,6 +1841,250 @@ namespace AutoMetal
 
             ShowBatchResultDialog(batchResults);
             LogAlgorithmBatchSummary(batchResults);
+            TryPromptInsertAlgorithmResults(runImages, batchResults);
+        }
+
+        private bool AreAllAlgorithmOutputsReady(List<string> runImages)
+        {
+            if (runImages == null || runImages.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var imagePath in runImages)
+            {
+                if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+                {
+                    return false;
+                }
+
+                var paths = GetOutputImagePathsBySource(imagePath);
+                if (!File.Exists(paths.binaryPath) ||
+                    !File.Exists(paths.standardPath) ||
+                    !File.Exists(paths.croppedPath) ||
+                    !File.Exists(paths.outputPath) ||
+                    !File.Exists(paths.maskPath) ||
+                    !File.Exists(paths.heatmapPath))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void TryPromptInsertAlgorithmResults(List<string> runImages, List<AlgorithmBatchResult> batchResults)
+        {
+            if (!TryPromptBatchAndSampleType(out var batchNo, out var sampleType))
+            {
+                SafeAppendLog("已取消算法结果入库。");
+                return;
+            }
+
+            var candidates = BuildAlgorithmInsertCandidates(runImages, batchResults, batchNo, sampleType);
+            if (candidates.Count == 0)
+            {
+                SafeAppendLog("算法结果未入库：未匹配到可写入数据库的有效计算结果（请检查样品命名与计算结果映射）。");
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                $"本次共生成 {candidates.Count} 条可入库记录，是否立即插入数据库？",
+                "算法结果入库确认",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirm != DialogResult.Yes) { SafeAppendLog("已取消算法结果入库。"); return; }
+
+            var existingSampleIds = new HashSet<string>(
+                SampleDBHelper.GetAllSamples().Select(x => x.SampleId),
+                StringComparer.OrdinalIgnoreCase);
+            var duplicateCandidates = candidates
+                .Where(x => existingSampleIds.Contains(x.SampleId))
+                .Select(x => x.SampleId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+
+            var candidatesToInsert = candidates;
+            if (duplicateCandidates.Count > 0)
+            {
+                string duplicatePreview = string.Join("、", duplicateCandidates.Take(8));
+                if (duplicateCandidates.Count > 8)
+                {
+                    duplicatePreview += $" 等{duplicateCandidates.Count}个";
+                }
+
+                var duplicateDecision = MessageBox.Show(
+                    $"检测到重复样品ID：{duplicatePreview}\n是否覆盖数据库中已有记录？\n选择“否”将跳过重复ID，仅插入新记录。",
+                    "重复样品ID确认",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (duplicateDecision != DialogResult.Yes)
+                {
+                    candidatesToInsert = candidates
+                        .Where(x => !existingSampleIds.Contains(x.SampleId))
+                        .ToList();
+                    SafeAppendLog($"检测到重复ID {duplicateCandidates.Count} 条，按用户选择已跳过重复记录。");
+                }
+            }
+
+            if (candidatesToInsert.Count == 0)
+            {
+                SafeAppendLog("没有可插入的新记录（重复记录已全部跳过）。");
+                return;
+            }
+
+            int successCount = 0;
+            foreach (var sample in candidatesToInsert)
+            {
+                try
+                {
+                    SampleDBHelper.UpsertSample(sample);
+                    successCount++;
+                }
+                catch (Exception ex)
+                {
+                    SafeAppendLog($"入库失败：{sample.SampleId}，原因：{ex.Message}");
+                }
+            }
+
+            SafeAppendLog($"算法结果入库完成：成功 {successCount} / {candidatesToInsert.Count}");
+            LoadAllDatabaseRows();
+        }
+
+        private List<SampleDBHelper.SampleData> BuildAlgorithmInsertCandidates(
+            List<string> runImages,
+            List<AlgorithmBatchResult> batchResults,
+            int batchNo,
+            string sampleType)
+        {
+            var resultMap = batchResults
+                .Where(r => !string.IsNullOrWhiteSpace(r.SampleName))
+                .GroupBy(r => $"{r.BatchName}|{r.SampleName}", StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var resultBySampleName = batchResults
+                .Where(r => !string.IsNullOrWhiteSpace(r.SampleName))
+                .GroupBy(r => Path.GetFileNameWithoutExtension(r.SampleName), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            var candidates = new List<SampleDBHelper.SampleData>();
+            foreach (var imagePath in runImages)
+            {
+                if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+                {
+                    continue;
+                }
+
+                var batchName = GetBatchNameFromImagePath(imagePath);
+                var sampleName = Path.GetFileName(imagePath);
+                var mapKey = $"{batchName}|{sampleName}";
+                if (!resultMap.TryGetValue(mapKey, out var result))
+                {
+                    // 兼容：当批次名或扩展名匹配不上时，退化为按样品名匹配。
+                    var sampleId = Path.GetFileNameWithoutExtension(imagePath);
+                    if (!resultBySampleName.TryGetValue(sampleId, out result))
+                    {
+                        continue;
+                    }
+                }
+
+                // 仅在覆盖率和均匀性都有效时允许入库。
+                if (!result.Coverage.HasValue || !result.Uniformity.HasValue || double.IsNaN(result.Uniformity.Value))
+                {
+                    continue;
+                }
+
+                var outputPaths = GetOutputImagePathsBySource(imagePath);
+                int iterationNo = 0;
+                int.TryParse(batchName, out iterationNo);
+                var dbSampleId = Path.GetFileNameWithoutExtension(imagePath);
+                var now = DateTime.Now;
+                candidates.Add(new SampleDBHelper.SampleData
+                {
+                    SampleId = dbSampleId,
+                    SampleType = sampleType,
+                    IterationNo = iterationNo,
+                    BatchNo = batchNo,
+                    Coverage = result.Coverage.Value,
+                    Uniformity = result.Uniformity.Value,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                    OriImagePath = imagePath,
+                    CroppedImagePath = File.Exists(outputPaths.croppedPath) ? outputPaths.croppedPath : string.Empty,
+                    HeatmapImagePath = File.Exists(outputPaths.heatmapPath) ? outputPaths.heatmapPath : string.Empty,
+                    MaskImagePath = File.Exists(outputPaths.maskPath) ? outputPaths.maskPath : string.Empty,
+                    OutputImagePath = File.Exists(outputPaths.outputPath) ? outputPaths.outputPath : string.Empty,
+                    StandardImagePath = File.Exists(outputPaths.standardPath) ? outputPaths.standardPath : string.Empty
+                });
+            }
+
+            return candidates;
+        }
+
+        private bool TryPromptBatchAndSampleType(out int batchNo, out string sampleType)
+        {
+            int selectedBatchNo = 0;
+            string selectedSampleType = string.Empty;
+
+            using (var dialog = new Form())
+            {
+                dialog.Text = "入库参数确认";
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dialog.MinimizeBox = false;
+                dialog.MaximizeBox = false;
+                dialog.ClientSize = new System.Drawing.Size(420, 180);
+
+                var lblBatch = new Label { Text = "第几批次（BatchNo）", Left = 20, Top = 22, Width = 180 };
+                var txtBatch = new TextBox { Left = 210, Top = 18, Width = 160, Text = "1" };
+                var lblType = new Label { Text = "样品类型（SampleType）", Left = 20, Top = 62, Width = 180 };
+                var cmbType = new ComboBox
+                {
+                    Left = 210,
+                    Top = 58,
+                    Width = 160,
+                    DropDownStyle = ComboBoxStyle.DropDownList
+                };
+                cmbType.Items.AddRange(new object[] { "Organic", "Oxide" });
+                cmbType.SelectedIndex = 0;
+
+                var btnOk = new Button { Text = "确定", Left = 210, Top = 110, Width = 75 };
+                var btnCancel = new Button { Text = "取消", Left = 295, Top = 110, Width = 75 };
+
+                btnOk.Click += (_, __) =>
+                {
+                    if (!int.TryParse(txtBatch.Text.Trim(), out var parsedBatch) || parsedBatch <= 0)
+                    {
+                        SafeShowWarning("批次号必须为大于0的整数。");
+                        return;
+                    }
+
+                    selectedBatchNo = parsedBatch;
+                    selectedSampleType = cmbType.SelectedItem?.ToString() ?? "Organic";
+                    dialog.DialogResult = DialogResult.OK;
+                    dialog.Close();
+                };
+                btnCancel.Click += (_, __) =>
+                {
+                    dialog.DialogResult = DialogResult.Cancel;
+                    dialog.Close();
+                };
+
+                dialog.Controls.Add(lblBatch);
+                dialog.Controls.Add(txtBatch);
+                dialog.Controls.Add(lblType);
+                dialog.Controls.Add(cmbType);
+                dialog.Controls.Add(btnOk);
+                dialog.Controls.Add(btnCancel);
+
+                var ok = dialog.ShowDialog(this) == DialogResult.OK;
+                batchNo = ok ? selectedBatchNo : 0;
+                sampleType = ok ? selectedSampleType : string.Empty;
+                return ok;
+            }
         }
 
         private bool ValidateAlgorithmRunInputs(List<string> runImages)
@@ -2285,16 +2431,20 @@ namespace AutoMetal
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "均匀性", DataPropertyName = "UniformityText", Width = 140 });
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "状态", DataPropertyName = "Status", Width = 180 });
 
-            var rows = batchResults.Select(r => new
-            {
-                r.BatchName,
-                r.SampleName,
-                CoverageText = r.Coverage.HasValue ? r.Coverage.Value.ToString("F6") : "-",
-                UniformityText = r.Uniformity.HasValue
-                    ? (double.IsNaN(r.Uniformity.Value) ? "NaN" : r.Uniformity.Value.ToString("F6"))
-                    : "-",
-                r.Status
-            }).ToList();
+            var rows = batchResults
+                .OrderBy(r => GetBatchSortKey(r.BatchName))
+                .ThenBy(r => r.BatchName)
+                .ThenBy(r => r.SampleName)
+                .Select(r => new
+                {
+                    r.BatchName,
+                    r.SampleName,
+                    CoverageText = r.Coverage.HasValue ? r.Coverage.Value.ToString("F6") : "-",
+                    UniformityText = r.Uniformity.HasValue
+                        ? (double.IsNaN(r.Uniformity.Value) ? "NaN" : r.Uniformity.Value.ToString("F6"))
+                        : "-",
+                    r.Status
+                }).ToList();
 
             grid.DataSource = rows;
             dialog.Controls.Add(grid);
@@ -2325,7 +2475,10 @@ namespace AutoMetal
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "平均覆盖率", DataPropertyName = "CoverageAvgText", Width = 150 });
             grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "平均均匀性", DataPropertyName = "UniformityAvgText", Width = 150 });
 
-            var rows = directoryAverages.Select(x => new
+            var rows = directoryAverages
+                .OrderBy(x => GetBatchSortKey(x.BatchName))
+                .ThenBy(x => x.BatchName)
+                .Select(x => new
             {
                 x.BatchName,
                 x.SampleCount,
@@ -2336,6 +2489,22 @@ namespace AutoMetal
             grid.DataSource = rows;
             dialog.Controls.Add(grid);
             dialog.ShowDialog(this);
+        }
+
+        private static int GetBatchSortKey(string batchName)
+        {
+            if (int.TryParse(batchName, out var n))
+            {
+                return n;
+            }
+
+            var digits = new string((batchName ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (int.TryParse(digits, out n))
+            {
+                return n;
+            }
+
+            return int.MaxValue;
         }
 
         private void LoadImageToPictureBox(PictureBox pictureBox, string imagePath)
@@ -2574,48 +2743,6 @@ namespace AutoMetal
             return $"帧率: {AutoMetalConstants.DEFAULT_TARGET_FPS} FPS, 超时: {AutoMetalConstants.DEFAULT_SNAP_TIMEOUT}ms, 帧率控制: {(AutoMetalConstants.DEFAULT_ENABLE_FPS_CONTROL ? "启用" : "禁用")}";
         }
 
-        // 切换键盘控制状态
-        public void ToggleKeyboardControl()
-        {
-            if (checkBoxKeyboardControl != null)
-            {
-                // 通过CheckBox来切换状态
-                checkBoxKeyboardControl.Checked = !checkBoxKeyboardControl.Checked;
-            }
-            else
-            {
-                // 如果没有CheckBox，直接切换状态
-                EnableKeyboardControl(!isKeyboardControlEnabled);
-            }
-        }
-
-        // 获取键盘控制状态信息
-        public string GetKeyboardControlStatus()
-        {
-            return $"键盘控制: {(isKeyboardControlEnabled ? "启用" : "禁用")}, 移动步长: {moveStep:F2}";
-        }
-
-        // 手动设置键盘控制CheckBox引用
-        public void SetKeyboardControlCheckBox(CheckBox checkBox)
-        {
-            // 如果之前有CheckBox，先取消事件监听
-            if (checkBoxKeyboardControl != null)
-            {
-                checkBoxKeyboardControl.CheckedChanged -= OnKeyboardControlCheckBoxChanged;
-            }
-
-            checkBoxKeyboardControl = checkBox;
-
-            if (checkBoxKeyboardControl != null)
-            {
-                // 订阅CheckBox状态变化事件
-                checkBoxKeyboardControl.CheckedChanged += OnKeyboardControlCheckBoxChanged;
-                // 同步当前状态
-                checkBoxKeyboardControl.Checked = isKeyboardControlEnabled;
-                SafeAppendLog("键盘控制CheckBox已手动设置");
-            }
-        }
-
         private void AddColumn(string propertyName, string headerText)
         {
             dataGridView1.Columns.Add(new DataGridViewTextBoxColumn
@@ -2626,51 +2753,43 @@ namespace AutoMetal
             });
         }
 
-        private void btn_getAllData_Click(object sender, EventArgs e)
+        private void BindDatabaseGrid(List<SampleDBHelper.SampleData> samples)
         {
-            // 获取数据
-            var samples = SampleDBHelper.GetAllSamples();
-            _bindingList = new BindingList<SampleDBHelper.SampleData>(samples);
-
-            // 禁用自动列生成
+            _bindingList = new BindingList<SampleDBHelper.SampleData>(samples ?? new List<SampleDBHelper.SampleData>());
             dataGridView1.AutoGenerateColumns = false;
             dataGridView1.DataSource = _bindingList;
-
-            // 清除现有列（避免重复添加）
             dataGridView1.Columns.Clear();
 
-            // 手动添加要显示的列
             AddColumn("SampleId", "样本ID");
+            AddColumn("SampleType", "样本类型");
+            AddColumn("IterationNo", "迭代号");
+            AddColumn("BatchNo", "批次号");
             AddColumn("Coverage", "覆盖率");
-            AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("CroppedImagePath", "裁剪后的图像路径");
             AddColumn("Uniformity", "均匀度");
             AddColumn("CreatedAt", "创建时间");
+            AddColumn("OriImagePath", "原始图像路径(ori)");
+            AddColumn("CroppedImagePath", "裁剪图像路径(cropped)");
+            AddColumn("HeatmapImagePath", "热力图图像路径");
+            AddColumn("MaskImagePath", "mask图像路径");
+            AddColumn("OutputImagePath", "output图像路径");
+            AddColumn("StandardImagePath", "standard图像路径");
             AddColumn("UpdatedAt", "更新时间");
+        }
 
+        private void LoadAllDatabaseRows()
+        {
+            BindDatabaseGrid(SampleDBHelper.GetAllSamples());
+        }
+
+        private void btn_getAllData_Click(object sender, EventArgs e)
+        {
+            LoadAllDatabaseRows();
         }
 
         private void btnSearchByDate_Click_1(object sender, EventArgs e)
         {
             DateTime selectedDate = dateTimePicker1.Value.Date; // 获取选择的日期（忽略时间部分）
-            var samples = SampleDBHelper.GetSamplesByDate(selectedDate);
-            _bindingList = new BindingList<SampleDBHelper.SampleData>(samples);
-
-            // 禁用自动列生成
-            dataGridView1.AutoGenerateColumns = false;
-            dataGridView1.DataSource = _bindingList;
-
-            // 清除现有列（避免重复添加）
-            dataGridView1.Columns.Clear();
-
-            // 手动添加要显示的列
-            AddColumn("SampleId", "样本ID");
-            AddColumn("Coverage", "覆盖率");
-            AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("CroppedImagePath", "裁剪后的图像路径");
-            AddColumn("Uniformity", "均匀度");
-            AddColumn("CreatedAt", "创建时间");
-            AddColumn("UpdatedAt", "更新时间");
+            BindDatabaseGrid(SampleDBHelper.GetSamplesByDate(selectedDate));
         }
 
         private void btnSearchCoverage_Click(object sender, EventArgs e)
@@ -2686,27 +2805,215 @@ namespace AutoMetal
                 return;
             }
 
-            var samples = SampleDBHelper.GetSamplesByCoverageAndUniformity(
+            BindDatabaseGrid(SampleDBHelper.GetSamplesByCoverageAndUniformity(
                 hasCoverage ? coverage : (double?)null,
-                hasUniformity ? uniformity : (double?)null);
+                hasUniformity ? uniformity : (double?)null));
+        }
 
-            _bindingList = new BindingList<SampleDBHelper.SampleData>(samples);
+        private void dataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.RowIndex >= dataGridView1.Rows.Count)
+            {
+                return;
+            }
 
-            // 禁用自动列生成
-            dataGridView1.AutoGenerateColumns = false;
-            dataGridView1.DataSource = _bindingList;
+            var rowItem = dataGridView1.Rows[e.RowIndex].DataBoundItem as SampleDBHelper.SampleData;
+            if (rowItem == null)
+            {
+                return;
+            }
 
-            // 清除现有列（避免重复添加）
-            dataGridView1.Columns.Clear();
+            ShowSampleEditDialog(rowItem);
+        }
 
-            // 手动添加要显示的列
-            AddColumn("SampleId", "样本ID");
-            AddColumn("Coverage", "覆盖率");
-            AddColumn("OriginalImagePath", "原始图像路径");
-            AddColumn("CroppedImagePath", "裁剪后的图像路径");
-            AddColumn("Uniformity", "均匀度");
-            AddColumn("CreatedAt", "创建时间");
-            AddColumn("UpdatedAt", "更新时间");
+        private void ShowSampleEditDialog(SampleDBHelper.SampleData source)
+        {
+            var editable = new SampleDBHelper.SampleData
+            {
+                SampleId = source.SampleId,
+                SampleType = source.SampleType,
+                IterationNo = source.IterationNo,
+                BatchNo = source.BatchNo,
+                Coverage = source.Coverage,
+                Uniformity = source.Uniformity,
+                OriImagePath = source.OriImagePath,
+                CroppedImagePath = source.CroppedImagePath,
+                HeatmapImagePath = source.HeatmapImagePath,
+                MaskImagePath = source.MaskImagePath,
+                OutputImagePath = source.OutputImagePath,
+                StandardImagePath = source.StandardImagePath,
+                CreatedAt = source.CreatedAt,
+                UpdatedAt = source.UpdatedAt
+            };
+
+            using (var dialog = new Form())
+            {
+                dialog.Text = "编辑样本记录";
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dialog.MinimizeBox = false;
+                dialog.MaximizeBox = false;
+                dialog.ClientSize = new System.Drawing.Size(760, 380);
+
+                var panel = new TableLayoutPanel
+                {
+                    Dock = DockStyle.Fill,
+                    ColumnCount = 2,
+                    RowCount = 13,
+                    AutoScroll = true,
+                    Padding = new Padding(12)
+                };
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+                panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+                TextBox AddField(string label, string value)
+                {
+                    panel.Controls.Add(new Label
+                    {
+                        Text = label,
+                        AutoSize = true,
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Anchor = AnchorStyles.Left
+                    });
+                    var tb = new TextBox
+                    {
+                        Text = value ?? string.Empty,
+                        Dock = DockStyle.Fill
+                    };
+                    panel.Controls.Add(tb);
+                    return tb;
+                }
+
+                var txtSampleId = AddField("样本ID", editable.SampleId);
+                var txtSampleType = AddField("样本类型", editable.SampleType);
+                var txtIterationNo = AddField("迭代号", editable.IterationNo.ToString());
+                var txtBatchNo = AddField("批次号", editable.BatchNo.ToString());
+                var txtCoverage = AddField("覆盖率", editable.Coverage.ToString("F6"));
+                var txtUniformity = AddField("均匀度", editable.Uniformity.ToString("F6"));
+                var txtOriginalPath = AddField("原始图像路径(ori)", editable.OriImagePath);
+                var txtCroppedPath = AddField("裁剪图像路径", editable.CroppedImagePath);
+                var txtUniImgPath = AddField("热力图图像路径", editable.HeatmapImagePath);
+                var txtCoverageImgPath = AddField("mask图像路径", editable.MaskImagePath);
+                var txtOutputImgPath = AddField("output图像路径", editable.OutputImagePath);
+                var txtStandardImgPath = AddField("standard图像路径", editable.StandardImagePath);
+
+                var txtCreatedAt = AddField("创建时间", editable.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                txtCreatedAt.ReadOnly = true;
+                var txtUpdatedAt = AddField("更新时间", editable.UpdatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                txtUpdatedAt.ReadOnly = true;
+
+                var buttonPanel = new FlowLayoutPanel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 48,
+                    FlowDirection = FlowDirection.RightToLeft,
+                    Padding = new Padding(12, 8, 12, 8)
+                };
+
+                var btnSave = new Button { Text = "保存修改", Width = 100, Height = 28 };
+                var btnDelete = new Button { Text = "删除记录", Width = 100, Height = 28 };
+                var btnCancel = new Button { Text = "取消", Width = 80, Height = 28 };
+
+                btnCancel.Click += (_, __) => dialog.Close();
+                btnDelete.Click += (_, __) =>
+                {
+                    var result = MessageBox.Show(
+                        $"确认删除样本 {source.SampleId} 吗？该操作不可撤销。",
+                        "确认删除",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+                    if (result != DialogResult.Yes)
+                    {
+                        return;
+                    }
+
+                    if (SampleDBHelper.DeleteSample(source.SampleId))
+                    {
+                        SafeAppendLog($"已删除样本: {source.SampleId}");
+                        LoadAllDatabaseRows();
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        SafeShowWarning("删除失败，记录可能不存在。");
+                    }
+                };
+
+                btnSave.Click += (_, __) =>
+                {
+                    var newSampleId = txtSampleId.Text.Trim();
+                    if (string.IsNullOrWhiteSpace(newSampleId))
+                    {
+                        SafeShowWarning("样本ID不能为空。");
+                        return;
+                    }
+
+                    if (!double.TryParse(txtCoverage.Text.Trim(), out var newCoverage))
+                    {
+                        SafeShowWarning("覆盖率必须为数字。");
+                        return;
+                    }
+
+                    if (!double.TryParse(txtUniformity.Text.Trim(), out var newUniformity))
+                    {
+                        SafeShowWarning("均匀度必须为数字。");
+                        return;
+                    }
+
+                    if (!int.TryParse(txtIterationNo.Text.Trim(), out var newIterationNo))
+                    {
+                        SafeShowWarning("迭代号必须为整数。");
+                        return;
+                    }
+                    if (!int.TryParse(txtBatchNo.Text.Trim(), out var newBatchNo))
+                    {
+                        SafeShowWarning("批次号必须为整数。");
+                        return;
+                    }
+
+                    if (!string.Equals(newSampleId, source.SampleId, StringComparison.Ordinal))
+                    {
+                        var existing = SampleDBHelper.GetSampleById(newSampleId);
+                        if (existing != null)
+                        {
+                            SafeShowWarning("新的样本ID已存在，请更换。");
+                            return;
+                        }
+                    }
+
+                    editable.SampleId = newSampleId;
+                    editable.SampleType = txtSampleType.Text.Trim();
+                    editable.IterationNo = newIterationNo;
+                    editable.BatchNo = newBatchNo;
+                    editable.Coverage = newCoverage;
+                    editable.Uniformity = newUniformity;
+                    editable.OriImagePath = txtOriginalPath.Text.Trim();
+                    editable.CroppedImagePath = txtCroppedPath.Text.Trim();
+                    editable.HeatmapImagePath = txtUniImgPath.Text.Trim();
+                    editable.MaskImagePath = txtCoverageImgPath.Text.Trim();
+                    editable.OutputImagePath = txtOutputImgPath.Text.Trim();
+                    editable.StandardImagePath = txtStandardImgPath.Text.Trim();
+                    editable.UpdatedAt = DateTime.Now;
+
+                    if (!string.Equals(source.SampleId, editable.SampleId, StringComparison.Ordinal))
+                    {
+                        SampleDBHelper.DeleteSample(source.SampleId);
+                    }
+                    SampleDBHelper.UpsertSample(editable);
+
+                    SafeAppendLog($"样本已更新: {source.SampleId} -> {editable.SampleId}");
+                    LoadAllDatabaseRows();
+                    dialog.Close();
+                };
+
+                buttonPanel.Controls.Add(btnSave);
+                buttonPanel.Controls.Add(btnDelete);
+                buttonPanel.Controls.Add(btnCancel);
+
+                dialog.Controls.Add(panel);
+                dialog.Controls.Add(buttonPanel);
+                dialog.ShowDialog(this);
+            }
         }
 
         private void textBox4_TextChanged(object sender, EventArgs e)
