@@ -28,6 +28,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -37,6 +38,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
     <DebugSymbols>true</DebugSymbols>
@@ -81,7 +83,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup>
-    <ApplicationIcon>resource\soft.ico</ApplicationIcon>
+    <ApplicationIcon>assets\soft.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="EntityFramework, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
@@ -169,45 +171,67 @@
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
     <Reference Include="TensorRtSharp">
-      <HintPath>..\..\..\TensorRT-CSharp-API\src\TensorRtSharp\bin\Release\net48\TensorRtSharp.dll</HintPath>
+      <HintPath>..\..\bin\x64\Release\TensorRtSharp.dll</HintPath>
     </Reference>
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="alogrithm\CoverageAnalyzer.cs" />
-    <Compile Include="alogrithm\SimilarityAnalyzer.cs" />
-    <Compile Include="alogrithm\glassNumberAnalyzer.cs" />
-    <Compile Include="alogrithm\Yolov8Det.cs" />
-    <Compile Include="ParameterSettingsForm.cs">
+    <Compile Include="Model\Algorithms\CoverageAnalyzer.cs" />
+    <Compile Include="Model\Algorithms\SimilarityAnalyzer.cs" />
+    <Compile Include="Model\Algorithms\GlassNumberAnalyzer.cs" />
+    <Compile Include="Model\Algorithms\Yolov8Det.cs" />
+    <Compile Include="View\ParameterSettingsForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="database\SampleDBHelper.cs" />
-    <Compile Include="plot\Uniform.cs" />
-    <Compile Include="utils\AnalysisUtils.cs" />
-    <Compile Include="utils\AutoMetalConstants.cs" />
-    <Compile Include="alogrithm\ClassifierAnalyzer.cs" />
-    <Compile Include="alogrithm\oldCoverageAnalyzer.cs" />
-    <Compile Include="TensorRT\detresult.cs" />
-    <Compile Include="alogrithm\ImagePreprocessor.cs" />
-    <Compile Include="alogrithm\ImageUniformityCalculator.cs" />
-    <Compile Include="TensorRT\normalize.cs" />
-    <Compile Include="TensorRT\permute.cs" />
-    <Compile Include="TensorRT\resize.cs" />
-    <Compile Include="TensorRT\result.cs" />
-    <Compile Include="TensorRT\segresult.cs" />
-    <Compile Include="TensorRT\Slog.cs" />
-    <Compile Include="TensorRT\visualize.cs" />
-    <Compile Include="alogrithm\Yolov8Seg.cs" />
-    <Compile Include="AutoMetal.cs">
+    <Compile Include="Model\Data\SampleDBHelper.cs" />
+    <Compile Include="Model\Visualization\UniformPlot.cs" />
+    <Compile Include="Model\Shared\AnalysisUtils.cs" />
+    <Compile Include="Model\Services\ModelConversionService.cs" />
+    <Compile Include="Model\Services\IModelConversionService.cs" />
+    <Compile Include="Model\Services\DeepLabTrainingService.cs" />
+    <Compile Include="Model\Services\IDeepLabTrainingService.cs" />
+    <Compile Include="Model\Services\CoverageInferenceService.cs" />
+    <Compile Include="Model\Services\ICoverageInferenceService.cs" />
+    <Compile Include="Model\Services\AlgorithmBatchContracts.cs" />
+    <Compile Include="Model\Services\AlgorithmBatchProcessingService.cs" />
+    <Compile Include="Model\Services\IAlgorithmBatchProcessingService.cs" />
+    <Compile Include="Presenter\IAutoMetalTrainingView.cs" />
+    <Compile Include="Presenter\AutoMetalTrainingPresenter.cs" />
+    <Compile Include="Model\Infrastructure\ProcessRunner.cs" />
+    <Compile Include="Model\Infrastructure\FileDialogService.cs" />
+    <Compile Include="Model\Infrastructure\IFileDialogService.cs" />
+    <Compile Include="Model\Infrastructure\WinFormsLogWriter.cs" />
+    <Compile Include="Model\Infrastructure\IWinFormsLogWriter.cs" />
+    <Compile Include="Model\Infrastructure\NotificationService.cs" />
+    <Compile Include="Model\Infrastructure\INotificationService.cs" />
+    <Compile Include="Model\Infrastructure\ImagePreviewService.cs" />
+    <Compile Include="Model\Infrastructure\IImagePreviewService.cs" />
+    <Compile Include="Model\Entities\AlgorithmBatchResult.cs" />
+    <Compile Include="Model\Entities\AlgorithmDirectoryAverage.cs" />
+    <Compile Include="Model\Shared\AutoMetalConstants.cs" />
+    <Compile Include="Model\Algorithms\ClassifierAnalyzer.cs" />
+    <Compile Include="Model\Algorithms\LegacyCoverageAnalyzer.cs" />
+    <Compile Include="Model\TensorRT\detresult.cs" />
+    <Compile Include="Model\Algorithms\ImagePreprocessor.cs" />
+    <Compile Include="Model\Algorithms\ImageUniformityCalculator.cs" />
+    <Compile Include="Model\TensorRT\normalize.cs" />
+    <Compile Include="Model\TensorRT\permute.cs" />
+    <Compile Include="Model\TensorRT\resize.cs" />
+    <Compile Include="Model\TensorRT\result.cs" />
+    <Compile Include="Model\TensorRT\segresult.cs" />
+    <Compile Include="Model\TensorRT\Slog.cs" />
+    <Compile Include="Model\TensorRT\visualize.cs" />
+    <Compile Include="Model\Algorithms\Yolov8Seg.cs" />
+    <Compile Include="View\AutoMetal.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="AutoMetal.Designer.cs">
+    <Compile Include="View\AutoMetal.Designer.cs">
       <DependentUpon>AutoMetal.cs</DependentUpon>
     </Compile>
     <Compile Include="main.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="utils\picBoxUtils.cs" />
-    <EmbeddedResource Include="AutoMetal.resx">
+    <Compile Include="Model\Infrastructure\PictureBoxHelper.cs" />
+    <EmbeddedResource Include="View\AutoMetal.resx">
       <DependentUpon>AutoMetal.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -243,8 +267,8 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="resource\soft.ico" />
-    <Content Include="scripts\uniformity_heatmap.py">
+    <Content Include="assets\soft.ico" />
+    <Content Include="scripts\python\uniformity_heatmap.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
